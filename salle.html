@@ -3426,7 +3426,7 @@ function updateTable() {
           ${admin ? "" : "disabled"}
           style="transform:scale(1.25);cursor:pointer;"
         >
-        <span>${info.smsSentAt ? "✅ SMS OK" : "❌ SMS "}</span>
+        <span>${info.smsSentAt ? "✅ SMS" : "❌ SMS"}</span>
         ${info.smsSentAt ? `<small style="font-weight:500;color:#555;">${new Date(info.smsSentAt).toLocaleString("fr-FR")}</small>` : ""}
       </label>`;
 
@@ -3463,7 +3463,7 @@ function updateTable() {
             ${admin ? "" : "disabled"}
             style="transform:scale(1.25);cursor:pointer;"
           >
-          <span>${info.ticketSmsSentAt ? "✅ SMS OK" : "❌ SMS billet"}</span>
+          <span>${info.ticketSmsSentAt ? "✅ SMS" : "❌ SMS"}</span>
           ${info.ticketSmsSentAt ? `<small style="font-weight:500;color:#555;">${new Date(info.ticketSmsSentAt).toLocaleString("fr-FR")}</small>` : ""}
         </label>` : `<p style="margin:6px 0;color:#777;font-weight:600;">⚠️ SMS billet impossible : aucun téléphone.</p>`)
       : `<p style="margin:6px 0;color:#777;font-weight:600;">🎟️ SMS billet : après paiement.</p>`;
