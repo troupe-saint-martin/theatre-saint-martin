@@ -2785,10 +2785,11 @@ updateTable(); // 🔄 rafraîchit le badge
 // ===================================================
 function getReservationSmsMessage() {
   return "Bonjour,\n\n"
-    + "✅ Nous avons bien reçu votre réservation pour la représentation du 10\u200Boctobre\u200B2026 à 20 h 30 à ISLEA pour la pièce : \"Je préfère qu'on reste amies\"\n\n"
-    + "Un email de confirmation vous a été envoyé.\n\n"
+    + "✅ Nous avons bien validé votre réservation pour la représentation du 10\u200Boctobre\u200B2026 à 20 h 30 à ISLEA pour la pièce : \"Je préfère qu'on reste amies\".\n\n"
+    + "Un email de confirmation vous a été envoyé avec le récapitulatif de votre réservation ainsi que les informations de règlement par virement ou par chèque.\n\n"
     + "⚠️ Si vous ne le voyez pas, pensez à vérifier vos spams ou courriers indésirables.\n\n"
-    + "Une fois le règlement reçu, vos billets vous seront envoyés par email.\n\n"
+    + "Une fois le règlement reçu, vos billets avec QR code vous seront envoyés par email.\n\n"
+    + "PS : si votre règlement est effectué sous un nom différent de celui de la réservation, merci d’indiquer le nom de la réservation au dos du chèque ou dans le libellé du virement.\n\n"
     + "Merci pour votre soutien à la Troupe Saint-Martin. ❤️";
 }
 
@@ -2799,6 +2800,37 @@ function cleanSmsPhone(phone) {
 function buildSmsHref(phone) {
   const cleanPhone = cleanSmsPhone(phone);
   return `sms:${cleanPhone}?body=${encodeURIComponent(getReservationSmsMessage())}`;
+}
+
+// ===================================================
+// 💳 SMS infos règlement : RIB + chèque
+// ===================================================
+function formatSmsAmount(value) {
+  const amount = Number(value || 0);
+  if (!Number.isFinite(amount)) return "0,00";
+  return amount.toFixed(2).replace(".", ",");
+}
+
+function getPaymentInfoSmsMessage(user = {}) {
+  const amount = formatSmsAmount(user.amount);
+
+  return "Bonjour,\n\n"
+    + "Voici les informations pour le règlement de votre réservation Théâtre Saint-Martin du 10 octobre 2026 à ISLEA.\n\n"
+    + "Montant à régler : " + amount + " €.\n\n"
+    + "Par virement bancaire :\n"
+    + "IBAN : FR76 1680 6008 2066 1344 2513 059\n"
+    + "BIC : AGRIFRPP868\n"
+    + "Titulaire : ASSOCIATION D'EDUCATION POPULAIRE SAINT-MARTIN\n\n"
+    + "Ou par chèque :\n"
+    + "à l'ordre de : Théatre SAINT-MARTIN\n"
+    + "Adresse : Mme MARION - 11 bis rue de la garde 03340 Bessay-sur-Allier\n\n"
+    + "Important : si le règlement est effectué sous un nom différent de celui de la réservation, merci d’indiquer le nom de la réservation au dos du chèque ou dans le libellé du virement.\n\n"
+    + "Merci pour votre soutien à la Troupe Saint-Martin.";
+}
+
+function buildPaymentInfoSmsHref(phone, user = {}) {
+  const cleanPhone = cleanSmsPhone(phone);
+  return `sms:${cleanPhone}?body=${encodeURIComponent(getPaymentInfoSmsMessage(user))}`;
 }
 
 async function markReservationSmsSent({ reservationId = "", clientName = "", clientEmail = "" } = {}) {
@@ -3139,6 +3171,10 @@ function updateTable() {
     const adults = info.seats.filter(s => s.type === "adulte");
     const children = info.seats.filter(s => s.type === "enfant");
     const babies = info.seats.filter(s => s.type === "moins8");
+    const reservationAmount = Number(info.amount || (
+      (info.seats.filter(s => s.type === "adulte").length * PRICE_ADULT) +
+      (info.seats.filter(s => s.type === "enfant").length * PRICE_CHILD)
+    ));
 
     const smsPhone = cleanSmsPhone(info.phone);
 
@@ -3208,11 +3244,36 @@ function updateTable() {
         </label>` : `<p style="margin:6px 0;color:#777;font-weight:600;">⚠️ SMS billet impossible : aucun téléphone.</p>`)
       : `<p style="margin:6px 0;color:#777;font-weight:600;">🎟️ SMS billet : disponible après paiement.</p>`;
 
+    const paymentSmsUser = {
+      reservationId,
+      name,
+      email: info.email || "",
+      phone: info.phone || "",
+      amount: reservationAmount
+    };
+
+    const paymentSmsLine = !info.allPaid
+      ? (info.phone ? `
+        <p style="margin:8px 0;">
+          <a
+            class="payment-info-sms-link"
+            href="${escapeHTML(buildPaymentInfoSmsHref(info.phone || "", paymentSmsUser))}"
+            data-name="${escapeHTML(name)}"
+            data-email="${escapeHTML(info.email || "")}" 
+            data-phone="${escapeHTML(info.phone || "")}" 
+            data-reservation-id="${escapeHTML(reservationId || "")}" 
+            style="display:inline-block;background:#795548;color:white;font-weight:800;text-decoration:none;padding:7px 10px;border-radius:7px;">
+            💳 Envoyer infos règlement par SMS
+          </a>
+        </p>` : `<p style="margin:6px 0;color:#777;font-weight:600;">💳 SMS règlement impossible : aucun téléphone.</p>`)
+      : "";
+
     content.innerHTML = `
   ${info.isTestReservation ? `<p style="background:#fff3e0;border-left:5px solid #bf360c;padding:8px;border-radius:6px;font-weight:800;color:#bf360c;">🧪 Réservation fictive — visible uniquement en admin, invisible sur la page publique.</p>` : ""}
   <p><strong>Email :</strong> ${escapeHTML(info.email || "—")}</p>
   <p><strong>Téléphone :</strong> ${smsPhoneLine}</p>
   ${smsStatusLine}
+  ${paymentSmsLine}
   ${ticketSmsLine}
 
   ${!isPendingPublic ? `
@@ -3448,6 +3509,13 @@ document.addEventListener("click", (e) => {
 
 document.addEventListener("click", (e) => {
   const link = e.target.closest(".ticket-sms-link");
+  if (!link) return;
+
+  e.stopPropagation();
+});
+
+document.addEventListener("click", (e) => {
+  const link = e.target.closest(".payment-info-sms-link");
   if (!link) return;
 
   e.stopPropagation();
