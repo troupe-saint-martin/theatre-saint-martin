@@ -2783,13 +2783,17 @@ updateTable(); // 🔄 rafraîchit le badge
 // ===================================================
 // 💬 SMS réservation : message + marquage partagé
 // ===================================================
-function getReservationSmsMessage() {
+function getReservationSmsMessage(user = {}) {
+  const amount = formatSmsAmount(user.amount);
+
   return "Bonjour,\n\n"
     + "✅ Nous avons bien validé votre réservation pour la représentation du 10\u200Boctobre\u200B2026 à 20 h 30 à ISLEA pour la pièce : \"Je préfère qu'on reste amies\".\n\n"
-    + "Un email de confirmation vous a été envoyé avec le récapitulatif de votre réservation ainsi que les informations de règlement par virement ou par chèque.\n\n"
-    + "⚠️ Si vous ne le voyez pas, pensez à vérifier vos spams ou courriers indésirables.\n\n"
+    + "Un email de confirmation vous a été envoyé avec le récapitulatif complet et les informations de règlement. Pensez à vérifier vos spams.\n\n"
+    + "Règlement : " + amount + " €.\n"
+    + "Virement : IBAN FR76 1680 6008 2066 1344 2513 059 - BIC AGRIFRPP868.\n"
+    + "Chèque : à l’ordre de Théatre SAINT-MARTIN, à envoyer à Mme MARION, 11 bis rue de la garde, 03340 Bessay-sur-Allier.\n\n"
+    + "Important : si le règlement est au nom d’une autre personne, merci d’indiquer le nom de la réservation au dos du chèque ou dans le libellé du virement.\n\n"
     + "Une fois le règlement reçu, vos billets avec QR code vous seront envoyés par email.\n\n"
-    + "PS : si votre règlement est effectué sous un nom différent de celui de la réservation, merci d’indiquer le nom de la réservation au dos du chèque ou dans le libellé du virement.\n\n"
     + "Merci pour votre soutien à la Troupe Saint-Martin. ❤️";
 }
 
@@ -2797,9 +2801,9 @@ function cleanSmsPhone(phone) {
   return String(phone || "").replace(/[^\d+]/g, "");
 }
 
-function buildSmsHref(phone) {
+function buildSmsHref(phone, user = {}) {
   const cleanPhone = cleanSmsPhone(phone);
-  return `sms:${cleanPhone}?body=${encodeURIComponent(getReservationSmsMessage())}`;
+  return `sms:${cleanPhone}?body=${encodeURIComponent(getReservationSmsMessage(user))}`;
 }
 
 // ===================================================
@@ -2890,14 +2894,19 @@ async function setReservationSmsStatus({ reservationId = "", clientName = "", cl
   updateStatsBar();
 }
 
-function openReservationSmsAndAskConfirmation({ phone = "" } = {}) {
+function openReservationSmsAndAskConfirmation({ phone = "", clientName = "", clientEmail = "", reservationId = "", amount = 0 } = {}) {
   const cleanPhone = cleanSmsPhone(phone);
   if (!cleanPhone) {
     alert("⚠️ Aucun numéro de téléphone disponible pour ouvrir le SMS.");
     return false;
   }
 
-  window.location.href = buildSmsHref(cleanPhone);
+  window.location.href = buildSmsHref(cleanPhone, {
+    name: clientName,
+    email: clientEmail,
+    reservationId,
+    amount
+  });
   return true;
 }
 
@@ -3181,7 +3190,7 @@ function updateTable() {
     const smsPhoneLine = info.phone
       ? `<a
           class="sms-reservation-link"
-          href="${escapeHTML(buildSmsHref(smsPhone))}"
+          href="${escapeHTML(buildSmsHref(smsPhone, info))}"
           data-name="${escapeHTML(name)}"
           data-email="${escapeHTML(info.email || "")}"
           data-reservation-id="${escapeHTML(reservationId || "")}"
@@ -4597,7 +4606,8 @@ async function confirmPublicRequestFromSalle(id) {
       phone: base.phone,
       clientName: base.name,
       clientEmail: base.email,
-      reservationId: id
+      reservationId: id,
+      amount: base.amount
     });
   }
 }
