@@ -1069,6 +1069,83 @@ body {
   }
 }
 
+
+/* === Organisation propre des blocs réservation admin === */
+.admin-reservation-card {
+  text-align: left;
+  display: grid;
+  gap: 12px;
+}
+.admin-section {
+  background: #fafafa;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  padding: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
+}
+.admin-section h4 {
+  margin: 0 0 8px;
+  color: #0d47a1;
+  font-size: 15px;
+}
+.admin-info-grid,
+.admin-count-grid,
+.admin-sms-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
+}
+.admin-info-item,
+.admin-count-item,
+.admin-sms-item {
+  background: #ffffff;
+  border: 1px solid #ececec;
+  border-radius: 10px;
+  padding: 9px 10px;
+  line-height: 1.45;
+}
+.admin-info-item strong,
+.admin-count-item strong,
+.admin-sms-item strong {
+  display: block;
+  margin-bottom: 3px;
+  color: #333;
+}
+.admin-main-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.admin-main-actions button,
+.admin-main-actions a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+}
+.admin-pay-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff8e1;
+  border: 1px solid #ffe082;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-weight: 800;
+}
+.admin-seat-list-title {
+  margin: 0 0 8px;
+  font-weight: 800;
+  color: #333;
+}
+@media (max-width: 700px) {
+  .admin-section { padding: 10px; }
+  .admin-info-grid,
+  .admin-count-grid,
+  .admin-sms-grid { grid-template-columns: 1fr; }
+}
+
 </style>
 </head>
 
@@ -3278,52 +3355,44 @@ function updateTable() {
       : "";
 
     content.innerHTML = `
-  ${info.isTestReservation ? `<p style="background:#fff3e0;border-left:5px solid #bf360c;padding:8px;border-radius:6px;font-weight:800;color:#bf360c;">🧪 Réservation fictive — visible uniquement en admin, invisible sur la page publique.</p>` : ""}
-  <p><strong>Email :</strong> ${escapeHTML(info.email || "—")}</p>
-  <p><strong>Téléphone :</strong> ${smsPhoneLine}</p>
-  ${smsStatusLine}
-  ${paymentSmsLine}
-  ${ticketSmsLine}
+  <div class="admin-reservation-card">
+    ${info.isTestReservation ? `<div class="admin-section" style="background:#fff3e0;border-left:5px solid #bf360c;font-weight:800;color:#bf360c;">🧪 Réservation fictive — visible uniquement en admin, invisible sur la page publique.</div>` : ""}
 
-  ${!isPendingPublic ? `
+    <div class="admin-section">
+      <h4>👤 Renseignements</h4>
+      <div class="admin-info-grid">
+        <div class="admin-info-item"><strong>Email</strong>${escapeHTML(info.email || "—")}</div>
+        <div class="admin-info-item"><strong>Téléphone</strong>${smsPhoneLine}</div>
+        <div class="admin-info-item"><strong>Référence</strong>${escapeHTML(reservationId || "—")}</div>
+      </div>
+    </div>
 
+    <div class="admin-section">
+      <h4>💬 SMS / suivi</h4>
+      <div class="admin-sms-grid">
+        <div class="admin-sms-item"><strong>SMS réservation</strong>${smsStatusLine}</div>
+        <div class="admin-sms-item"><strong>SMS règlement</strong>${paymentSmsLine || `<span style="color:#777;font-weight:600;">✅ Non nécessaire si déjà payé.</span>`}</div>
+        <div class="admin-sms-item"><strong>SMS billet</strong>${ticketSmsLine}</div>
+      </div>
+    </div>
 
-
-<div id="participants-${escapeHTML(reservationId)}"></div>
-` : ""}
-
-  <p><strong>🧍 Adultes :</strong> ${adults.length} × ${PRICE_ADULT} € →
-    <span style="color:#1565c0;font-weight:600">
-      ${adults.map(s => escapeHTML(s.id)).join(", ") || "—"}
-    </span>
-  </p>
-
-  <p><strong>🧒 Enfants :</strong> ${children.length} × ${PRICE_CHILD} € →
-    <span style="color:#0288d1;font-weight:600">
-      ${children.map(s => escapeHTML(s.id)).join(", ") || "—"}
-    </span>
-  </p>
-
-  <p><strong>🍼 Moins de 8 ans :</strong> ${babies.filter(s => s.type === "moins8").length} →
-    <span style="color:#6a1b9a;font-weight:600">
-      ${babies.filter(s => s.type === "moins8").map(s => escapeHTML(s.id)).join(", ") || "—"}
-    </span>
-  </p>
-
-  <p><strong>🎟️ Accompagnants gratuits :</strong> ${info.seats.filter(s => s.type === "gratuit").length} →
-    <span style="color:#8e24aa;font-weight:600">
-      ${info.seats.filter(s => s.type === "gratuit").map(s => escapeHTML(s.id)).join(", ") || "—"}
-    </span>
-  </p>
-
-  <p><strong>Total :</strong> ${(
-    (info.seats.filter(s => s.type === "adulte").length * PRICE_ADULT) +
-    (info.seats.filter(s => s.type === "enfant").length * PRICE_CHILD)
-  ).toFixed(2)} €</p>
+    <div class="admin-section">
+      <h4>💶 Détail réservation</h4>
+      <div class="admin-count-grid">
+        <div class="admin-count-item"><strong>🧍 Adultes</strong>${adults.length} × ${PRICE_ADULT} €<br><span style="color:#1565c0;font-weight:600">${adults.map(s => escapeHTML(s.id)).join(", ") || "—"}</span></div>
+        <div class="admin-count-item"><strong>🧒 Enfants</strong>${children.length} × ${PRICE_CHILD} €<br><span style="color:#0288d1;font-weight:600">${children.map(s => escapeHTML(s.id)).join(", ") || "—"}</span></div>
+        <div class="admin-count-item"><strong>🍼 Moins de 8 ans</strong>${babies.filter(s => s.type === "moins8").length}<br><span style="color:#6a1b9a;font-weight:600">${babies.filter(s => s.type === "moins8").map(s => escapeHTML(s.id)).join(", ") || "—"}</span></div>
+        <div class="admin-count-item"><strong>🎟️ Accompagnants gratuits</strong>${info.seats.filter(s => s.type === "gratuit").length}<br><span style="color:#8e24aa;font-weight:600">${info.seats.filter(s => s.type === "gratuit").map(s => escapeHTML(s.id)).join(", ") || "—"}</span></div>
+        <div class="admin-count-item"><strong>Total à régler</strong><span style="color:#2e7d32;font-weight:900;">${((info.seats.filter(s => s.type === "adulte").length * PRICE_ADULT) + (info.seats.filter(s => s.type === "enfant").length * PRICE_CHILD)).toFixed(2)} €</span></div>
+      </div>
+    </div>
+  </div>
 `;
 
     content.innerHTML += `
-  <div class="seat-list" style="margin-top:8px;">
+  <div class="admin-section" style="margin-top:12px;">
+    <p class="admin-seat-list-title">🪑 Places</p>
+    <div class="seat-list" style="margin-top:8px;">
     ${info.seats.map(s => {
       const icon =
         s.type === "moins8" || s.type === "gratuit" ? "🎟️ GRATUIT" :
@@ -3350,42 +3419,46 @@ function updateTable() {
         </span>
       `;
     }).join("")}
+    </div>
   </div>
 
-<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;flex-wrap:wrap;gap:6px;">
-  <label>💶 Tout payé 
-    <input
-      type="checkbox"
-      class="paid-toggle-client"
-      data-name="${escapeHTML(name)}"
-      data-reservation-id="${escapeHTML(reservationId || "")}"
-      data-public-pending="${isPendingPublic ? "true" : "false"}"
-      data-test="${info.isTestReservation ? "true" : "false"}"
-      ${info.allPaid ? "checked" : ""}>
-  </label>
-
-  ${admin && !info.isTestReservation ? `
-  <div class="group-actions" data-client="${escapeHTML(name)}" style="display:flex;gap:6px;flex-wrap:wrap;">
-    ${isPendingPublic ? `
-      <button class="public-confirm-btn" data-id="${escapeHTML(reservationId)}" style="background:#2e7d32;color:white;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;">✅ Valider + envoyer confirmation</button>
-      <button class="public-refuse-btn" data-id="${escapeHTML(reservationId)}" style="background:#c62828;color:white;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;">Refuser + libérer</button>
-      <button class="public-delete-btn" data-id="${escapeHTML(reservationId)}" style="background:#8e0000;color:white;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;">Supprimer</button>
-    ` : `
-      ${isPublic ? `<button disabled style="background:#9e9e9e;color:white;border:none;padding:6px 10px;border-radius:6px;cursor:not-allowed;">✅ Confirmation envoyée</button>` : ""}
-      <button class="group-add-btn" data-name="${escapeHTML(name)}" style="background:#2e7d32;color:white;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;">➕ Ajout groupé</button>
-      <button class="group-remove-btn" data-name="${escapeHTML(name)}" style="background:#d32f2f;color:white;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;">🗑️ Suppression groupée</button>
-      <button class="group-validate-btn" data-name="${escapeHTML(name)}" style="display:none;background:#1565c0;color:white;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;">✅ Valider</button>
-
-      <button
-        class="resend-ticket-btn"
+<div class="admin-section" style="margin-top:12px;">
+  <h4>⚙️ Actions admin</h4>
+  <div class="admin-main-actions">
+    <label class="admin-pay-label">💶 Tout payé 
+      <input
+        type="checkbox"
+        class="paid-toggle-client"
         data-name="${escapeHTML(name)}"
-        data-email="${escapeHTML(info.email || "")}"
-        style="background:#1976d2;color:white;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;">
-        📧 Renvoyer le billet
-      </button>
-    `}
+        data-reservation-id="${escapeHTML(reservationId || "")}"
+        data-public-pending="${isPendingPublic ? "true" : "false"}"
+        data-test="${info.isTestReservation ? "true" : "false"}"
+        ${info.allPaid ? "checked" : ""}>
+    </label>
+
+    ${admin && !info.isTestReservation ? `
+    <div class="group-actions admin-main-actions" data-client="${escapeHTML(name)}">
+      ${isPendingPublic ? `
+        <button class="public-confirm-btn" data-id="${escapeHTML(reservationId)}" style="background:#2e7d32;color:white;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;">✅ Valider + envoyer confirmation</button>
+        <button class="public-refuse-btn" data-id="${escapeHTML(reservationId)}" style="background:#c62828;color:white;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;">Refuser + libérer</button>
+        <button class="public-delete-btn" data-id="${escapeHTML(reservationId)}" style="background:#8e0000;color:white;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;">Supprimer</button>
+      ` : `
+        ${isPublic ? `<button disabled style="background:#9e9e9e;color:white;border:none;padding:6px 10px;border-radius:6px;cursor:not-allowed;">✅ Confirmation envoyée</button>` : ""}
+        <button class="group-add-btn" data-name="${escapeHTML(name)}" style="background:#2e7d32;color:white;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;">➕ Ajouter des places</button>
+        <button class="group-remove-btn" data-name="${escapeHTML(name)}" style="background:#d32f2f;color:white;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;">🗑️ Retirer des places</button>
+        <button class="group-validate-btn" data-name="${escapeHTML(name)}" style="display:none;background:#1565c0;color:white;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;">✅ Valider les changements</button>
+
+        <button
+          class="resend-ticket-btn"
+          data-name="${escapeHTML(name)}"
+          data-email="${escapeHTML(info.email || "")}"
+          style="background:#1976d2;color:white;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;">
+          📧 Renvoyer le billet
+        </button>
+      `}
+    </div>
+    ` : ""}
   </div>
-  ` : ""}
 </div>
 `;
 
@@ -5030,6 +5103,83 @@ function openPrintableBackupList() {
     thead { display: table-header-group; }
     tr { page-break-inside: avoid; page-break-after: auto; }
   }
+
+/* === Organisation propre des blocs réservation admin === */
+.admin-reservation-card {
+  text-align: left;
+  display: grid;
+  gap: 12px;
+}
+.admin-section {
+  background: #fafafa;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  padding: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
+}
+.admin-section h4 {
+  margin: 0 0 8px;
+  color: #0d47a1;
+  font-size: 15px;
+}
+.admin-info-grid,
+.admin-count-grid,
+.admin-sms-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
+}
+.admin-info-item,
+.admin-count-item,
+.admin-sms-item {
+  background: #ffffff;
+  border: 1px solid #ececec;
+  border-radius: 10px;
+  padding: 9px 10px;
+  line-height: 1.45;
+}
+.admin-info-item strong,
+.admin-count-item strong,
+.admin-sms-item strong {
+  display: block;
+  margin-bottom: 3px;
+  color: #333;
+}
+.admin-main-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.admin-main-actions button,
+.admin-main-actions a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+}
+.admin-pay-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff8e1;
+  border: 1px solid #ffe082;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-weight: 800;
+}
+.admin-seat-list-title {
+  margin: 0 0 8px;
+  font-weight: 800;
+  color: #333;
+}
+@media (max-width: 700px) {
+  .admin-section { padding: 10px; }
+  .admin-info-grid,
+  .admin-count-grid,
+  .admin-sms-grid { grid-template-columns: 1fr; }
+}
+
 </style>
 </head>
 <body>
@@ -6192,7 +6342,6 @@ La Troupe Saint-Martin</textarea>
 
 </body>
 </html>
-
 
 
 
