@@ -3426,7 +3426,7 @@ function updateTable() {
           ${admin ? "" : "disabled"}
           style="transform:scale(1.25);cursor:pointer;"
         >
-        <span>${info.smsSentAt ? "✅ SMS réservation envoyé" : "❌ SMS réservation non envoyé"}</span>
+        <span>${info.smsSentAt ? "✅ SMS résa ok" : "❌ SMS résa"}</span>
         ${info.smsSentAt ? `<small style="font-weight:500;color:#555;">${new Date(info.smsSentAt).toLocaleString("fr-FR")}</small>` : ""}
       </label>`;
 
@@ -3466,7 +3466,7 @@ function updateTable() {
           <span>${info.ticketSmsSentAt ? "✅ SMS billet envoyé" : "❌ SMS billet non envoyé"}</span>
           ${info.ticketSmsSentAt ? `<small style="font-weight:500;color:#555;">${new Date(info.ticketSmsSentAt).toLocaleString("fr-FR")}</small>` : ""}
         </label>` : `<p style="margin:6px 0;color:#777;font-weight:600;">⚠️ SMS billet impossible : aucun téléphone.</p>`)
-      : `<p style="margin:6px 0;color:#777;font-weight:600;">🎟️ SMS billet : disponible après paiement.</p>`;
+      : `<p style="margin:6px 0;color:#777;font-weight:600;">🎟️ SMS billet : après paiement.</p>`;
 
     const paymentSmsUser = {
       reservationId,
@@ -3487,7 +3487,7 @@ function updateTable() {
             data-phone="${escapeHTML(info.phone || "")}" 
             data-reservation-id="${escapeHTML(reservationId || "")}" 
             style="display:inline-block;background:#795548;color:white;font-weight:800;text-decoration:none;padding:7px 10px;border-radius:7px;">
-            💳 Envoyer infos règlement par SMS
+            💳 Envoyer SMS règlement
           </a>
         </p>` : `<p style="margin:6px 0;color:#777;font-weight:600;">💳 SMS règlement impossible : aucun téléphone.</p>`)
       : "";
