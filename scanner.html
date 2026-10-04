@@ -499,6 +499,9 @@ function parseQrText(text) {
     email: matchedTicket?.email || data?.email || "",
     phone: matchedTicket?.phone || data?.tel || data?.phone || "",
     sieges: resolvedSeats,
+    paid: matchedTicket ? !!matchedTicket.paid : !!data?.paid,
+    amount: Number(matchedTicket?.amount ?? data?.amount ?? 0),
+    octoberRoseCount: Number(matchedTicket?.octoberRoseCount ?? data?.octoberRoseCount ?? 0),
     maxScans: Math.max(seatCount || 1, 1),
     isKnownTicket: !!matchedTicket || Object.keys(validTickets).length === 0
   };
@@ -516,6 +519,23 @@ function setUsedTicketVisual(isUsed) {
   const box = document.querySelector(".compact-result");
   if (!box) return;
   box.classList.toggle("used-ticket", !!isUsed);
+}
+
+function paymentStatusHtml(ticket = {}) {
+  const amountValue = Number(ticket.amount || 0);
+  const amount = amountValue.toFixed(2).replace(".", ",");
+  const octoberRoseCount = Number(ticket.octoberRoseCount || 0);
+  const octoberRoseHtml = octoberRoseCount > 0
+    ? `<div style="margin-top:10px;padding:10px;border-radius:9px;background:#fff0f6;color:#ad1457;font-weight:950;">🎀 OCTOBRE ROSE — ${octoberRoseCount} place(s) association</div>`
+    : "";
+
+  if (amountValue <= 0) {
+    return octoberRoseHtml + `<div style="margin-top:10px;padding:10px;border-radius:9px;background:#e8f5e9;color:#1b5e20;font-weight:900;">✅ Aucun règlement à encaisser</div>`;
+  }
+  if (ticket.paid) {
+    return octoberRoseHtml + `<div style="margin-top:10px;padding:10px;border-radius:9px;background:#e8f5e9;color:#1b5e20;font-weight:900;">✅ Paiement reçu</div>`;
+  }
+  return octoberRoseHtml + `<div style="margin-top:10px;padding:10px;border-radius:9px;background:#fff3e0;color:#bf360c;font-weight:950;">⚠️ PAIEMENT NON REÇU — ${amount} € À ENCAISSER</div>`;
 }
 
 async function onScanSuccess(text, options = {}){
@@ -537,7 +557,7 @@ async function onScanSuccess(text, options = {}){
     statusEl.innerHTML = "<span class='err'>⛔ Billet déjà utilisé</span>";
     setUsedTicketVisual(true);
     detailsEl.style.display = "block";
-    detailsEl.innerHTML = `<div class="big-result">Déjà scanné ${current.count}/${ticket.maxScans}</div><strong>Réservation :</strong><br><b>${escapeHTML(current.nom || ticket.nom)}</b><hr><strong>🎟️ Sièges :</strong> ${escapeHTML(current.sieges || ticket.sieges)}`;
+    detailsEl.innerHTML = `<div class="big-result">Déjà scanné ${current.count}/${ticket.maxScans}</div><strong>Réservation :</strong><br><b>${escapeHTML(current.nom || ticket.nom)}</b><hr><strong>🎟️ Sièges :</strong> ${escapeHTML(current.sieges || ticket.sieges)}${paymentStatusHtml(ticket)}`;
     if (restartCameraAfterScan) setTimeout(startScanner, 900); else setTimeout(focusHandScannerInput, 120);
     return;
   }
@@ -546,6 +566,9 @@ async function onScanSuccess(text, options = {}){
   current.sieges = ticket.sieges || current.sieges || "";
   current.email = ticket.email || current.email || "";
   current.phone = ticket.phone || current.phone || "";
+  current.paid = !!ticket.paid;
+  current.amount = Number(ticket.amount || 0);
+  current.octoberRoseCount = Number(ticket.octoberRoseCount || 0);
   current.maxScans = ticket.maxScans;
   current.lastScan = Date.now();
   scanState[ticket.ticketId] = current;
@@ -558,7 +581,7 @@ async function onScanSuccess(text, options = {}){
   statusEl.innerHTML = `<span class='ok'>✅ Scan ${current.count}/${ticket.maxScans}</span>`;
   setUsedTicketVisual(false);
   detailsEl.style.display = "block";
-  detailsEl.innerHTML = `<div class="big-result ok">Entrée validée</div><strong>Réservation au nom de :</strong><br><b>${escapeHTML(current.nom)}</b><hr><strong>🎟️ Sièges :</strong> ${escapeHTML(current.sieges || "—")}`;
+  detailsEl.innerHTML = `<div class="big-result ok">Entrée validée</div><strong>Réservation au nom de :</strong><br><b>${escapeHTML(current.nom)}</b><hr><strong>🎟️ Sièges :</strong> ${escapeHTML(current.sieges || "—")}${paymentStatusHtml(ticket)}`;
   persistScan(ticket.ticketId);
   if (restartCameraAfterScan) setTimeout(startScanner, 650); else setTimeout(focusHandScannerInput, 120);
 }
@@ -713,17 +736,21 @@ async function syncReservationsFromFirebase() {
           phone: data.phone || "",
           sieges: [],
           paid: true,
+          amount: Number(data.amount || 0),
+          octoberRoseCount: 0,
           testReservation: isTestSource || data.testReservation === true || data.source === "test_data"
         };
       }
 
       grouped[key].sieges.push(seatId);
       grouped[key].paid = grouped[key].paid && !!data.paid;
+      if (data.type === "octobre_rose") grouped[key].octoberRoseCount += 1;
 
       if (!grouped[key].reservationId && data.reservationId) grouped[key].reservationId = data.reservationId;
       if (!grouped[key].email && data.email) grouped[key].email = data.email;
       if (!grouped[key].phone && data.phone) grouped[key].phone = data.phone;
       if (!grouped[key].nom && data.name) grouped[key].nom = data.name;
+      if (!grouped[key].amount && data.amount) grouped[key].amount = Number(data.amount || 0);
     });
   }
 
@@ -734,9 +761,8 @@ async function syncReservationsFromFirebase() {
     ticket.sieges = ticket.sieges.sort(sortSeatIds).join(", ");
     ticket.maxScans = Math.max(ticket.sieges.split(",").filter(Boolean).length, 1);
 
-    // Vraies réservations : seulement les billets payés.
-    // Réservations test : toujours chargées pour permettre les essais.
-    if (!ticket.testReservation && !ticket.paid) return;
+    // Toutes les réservations confirmées sont des billets valides, même si elles ne sont pas encore payées.
+    // Le paiement reste affiché séparément au moment du scan.
 
     validTickets[ticket.ticketId] = ticket;
     ticketBySeats[normalizeSeats(ticket.sieges)] = ticket;
