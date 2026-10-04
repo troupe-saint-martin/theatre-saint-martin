@@ -172,6 +172,7 @@
             <div><label for="childCount">Enfants 9-14 ans <span id="publicPriceChild" class="price-note">10 €</span></label><input id="childCount" type="number" min="0" max="12" value="0" /></div>
             <div><label for="babyCount">Moins de 8 ans <span class="price-note">gratuit</span></label><input id="babyCount" type="number" min="0" max="12" value="0" /></div>
             <div><label for="freeCount">Accompagnants — réservé aux membres de la troupe <span class="price-note">gratuit</span></label><input id="freeCount" type="number" min="0" max="12" value="0" /></div>
+            <div><label for="octoberRoseCount">🎀 Octobre Rose — invitation association <span class="price-note">gratuit</span></label><input id="octoberRoseCount" type="number" min="0" max="12" value="0" /></div>
           </div>
           <div id="childWarning" class="full" style="
             display:none;
@@ -443,7 +444,7 @@
             <strong>Email :</strong> ${escapeHTML(request.email)}<br>
             <strong>Téléphone :</strong> ${escapeHTML(request.phone)}<br>
             <strong>Places :</strong> ${safeSeats}<br>
-            <strong>Adultes :</strong> ${request.adultCount || 0} — <strong>Enfants :</strong> ${request.childCount || 0} — <strong>-8 ans :</strong> ${request.babyCount || 0} — <strong>Accompagnants :</strong> ${request.freeCount || 0}<br>
+            <strong>Adultes :</strong> ${request.adultCount || 0} — <strong>Enfants :</strong> ${request.childCount || 0} — <strong>-8 ans :</strong> ${request.babyCount || 0} — <strong>Accompagnants :</strong> ${request.freeCount || 0} — <strong>Octobre Rose :</strong> ${request.octoberRoseCount || 0}<br>
             <strong>Montant estimé :</strong> ${amount} €<br>
             <strong>Blocage jusqu’au :</strong> ${new Date(request.expiresAt).toLocaleString("fr-FR")}
           </div>
@@ -480,6 +481,7 @@
             <strong>Enfants 9-14 ans :</strong> ${request.childCount || 0}<br>
             <strong>Moins de 8 ans :</strong> ${request.babyCount || 0}<br>
             <strong>Accompagnants gratuits :</strong> ${request.freeCount || 0}<br>
+            <strong>🎀 Octobre Rose — association :</strong> ${request.octoberRoseCount || 0} place(s) gratuite(s)<br>
             <strong>Montant estimé :</strong> ${amount} €<br>
             <strong>Blocage jusqu’au :</strong> ${new Date(request.expiresAt).toLocaleString("fr-FR")}
           </div>
@@ -559,8 +561,9 @@
     const childCount = parseInt(document.getElementById("childCount").value, 10) || 0;
     const babyCount = parseInt(document.getElementById("babyCount").value, 10) || 0;
     const freeCount = parseInt(document.getElementById("freeCount").value, 10) || 0;
+    const octoberRoseCount = parseInt(document.getElementById("octoberRoseCount").value, 10) || 0;
     const message = document.getElementById("message").value.trim();
-    const totalPeople = adultCount + childCount + babyCount + freeCount;
+    const totalPeople = adultCount + childCount + babyCount + freeCount + octoberRoseCount;
     if(!selected.length) return showStatus("err", "Choisissez au moins une place sur le plan.");
     if(!name || !email || !phone) return showStatus("err", "Merci de compléter le nom, l’email et le téléphone.");
     if(!isValidEmail(email)) return showStatus("err", "❌ Adresse email invalide. Vérifiez qu’il n’y a pas d’espace, d’accent ou de point manquant.");
@@ -588,7 +591,7 @@
         if(!ok) throw new Error(`La place ${seatId} vient d’être prise.`);
         acquired.push(seatId);
       }
-      const payload = { id:requestId, status:"nouvelle", source:"reservation-public-plan", showId:SHOW_ID, spectacle:"Je préfère qu’on reste amies", date:"10 octobre 2026 à 20h30", lieu:"Salle ISLEA à Avermes 03", createdAt, expiresAt, name, email, phone, adultCount, childCount, babyCount, freeCount, totalPeople, amount, seats, message, adminNotificationEmail:ADMIN_NOTIFICATION_EMAIL };
+      const payload = { id:requestId, status:"nouvelle", source:"reservation-public-plan", showId:SHOW_ID, spectacle:"Je préfère qu’on reste amies", date:"10 octobre 2026 à 20h30", lieu:"Salle ISLEA à Avermes 03", createdAt, expiresAt, name, email, phone, adultCount, childCount, babyCount, freeCount, octoberRoseCount, totalPeople, amount, seats, message, adminNotificationEmail:ADMIN_NOTIFICATION_EMAIL };
       await dbSet(`${REQUESTS_PATH}/${requestId}`, payload);
 
       showStatus("ok", "✅ Demande enregistrée. Envoi des emails en cours…");
@@ -604,6 +607,7 @@
       document.getElementById("reservationForm").reset();
       document.getElementById("adultCount").value = 1;
       document.getElementById("freeCount").value = 0;
+      document.getElementById("octoberRoseCount").value = 0;
       selected = [];
       await loadState();
     }catch(err){
