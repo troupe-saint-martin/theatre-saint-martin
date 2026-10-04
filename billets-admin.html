@@ -218,8 +218,8 @@
 <body>
   <div class="wrap">
     <header>
-      <h1>🎟️ Billets envoyés</h1>
-      <p class="subtitle">Uniquement les réservations payées / billets disponibles. Recherche, visualisation et renvoi SMS.</p>
+      <h1>🎟️ Billets disponibles</h1>
+      <p class="subtitle">Toutes les réservations confirmées disposent d’un billet, payé ou non. Recherche, visualisation et renvoi SMS.</p>
     </header>
 
     <section id="locked" class="locked" style="display:none;">
@@ -307,14 +307,23 @@
 
     function getTicketSmsMessage(user = {}) {
       const ticketLink = buildTicketPageUrl(user);
+      const amountValue = Number(user.amount || 0);
+      const amount = amountValue.toFixed(2).replace(".", ",");
+      const isPaid = !!user.paid;
+      const octoberRoseCount = Number(user.octoberRoseCount || 0);
 
       return "Bonjour,\n\n"
-        + "✅ Bonne nouvelle : votre règlement a bien été reçu.\n\n"
-        + "Vous pouvez dès à présent consulter votre billet avec QR code pour la représentation du 10\u200Boctobre\u200B2026 à 20 h 30 à ISLEA en cliquant sur le lien ci-dessous 👇 :\n\n"
+        + "🎟️ Votre billet avec QR code pour la représentation du 10\u200Boctobre\u200B2026 à 20 h 30 à ISLEA est disponible ici 👇 :\n\n"
         + ticketLink + "\n\n"
-        + "Ce billet vous est également envoyé par email avec votre QR code.\n\n"
-        + "Le jour J, pensez à présenter votre billet à l’entrée, histoire de ne pas jouer une scène d’improvisation dès l’accueil. 😉\n\n"
-        + "ℹ️ SMS automatique — pour toute question, contactez-nous au 06 46 32 06 49.\n\n"
+        + (octoberRoseCount > 0 ? "🎀 Octobre Rose — association : " + octoberRoseCount + " place(s) gratuite(s).\n\n" : "")
+        + (amountValue <= 0
+            ? "✅ Aucun règlement à effectuer.\n\n"
+            : isPaid
+              ? "✅ Votre règlement est déjà enregistré.\n\n"
+              : "Montant à régler sur place : " + amount + " €.\n"
+                + "Paiement par chèque ou en espèces. Si vous réglez en espèces, merci de prévoir l’appoint si possible.\n\n")
+        + "Le jour J, présentez ce billet à l’entrée.\n\n"
+        + "ℹ️ Pour toute question, contactez-nous au 06 46 32 06 49.\n\n"
         + "Merci pour votre soutien à la Troupe Saint-Martin. ❤️";
     }
 
@@ -343,6 +352,8 @@
             phone: data.phone || "",
             seats: [],
             allPaid: true,
+            amount: Number(data.amount || publicRequest.amount || 0),
+            octoberRoseCount: 0,
             ticketEmailSentAt: data.ticketEmailSentAt || publicRequest.ticketEmailSentAt || "",
             ticketSmsSentAt: data.ticketSmsSentAt || publicRequest.ticketSmsSentAt || "",
             ticketSmsSentBy: data.ticketSmsSentBy || publicRequest.ticketSmsSentBy || "",
@@ -352,11 +363,13 @@
 
         grouped[key].seats.push(seatId);
         grouped[key].allPaid = grouped[key].allPaid && !!data.paid;
+        if (data.type === "octobre_rose") grouped[key].octoberRoseCount += 1;
 
         if (!grouped[key].reservationId && data.reservationId) grouped[key].reservationId = data.reservationId;
         if (!grouped[key].email && data.email) grouped[key].email = data.email;
         if (!grouped[key].phone && data.phone) grouped[key].phone = data.phone;
         if (!grouped[key].name && data.name) grouped[key].name = data.name;
+        if (!grouped[key].amount && data.amount) grouped[key].amount = Number(data.amount || 0);
 
         if (data.ticketEmailSentAt && (!grouped[key].ticketEmailSentAt || String(data.ticketEmailSentAt) > String(grouped[key].ticketEmailSentAt))) {
           grouped[key].ticketEmailSentAt = data.ticketEmailSentAt;
@@ -371,10 +384,8 @@
       return Object.values(grouped)
         .map(item => ({ ...item, seats: item.seats.sort(sortSeatIds) }))
         .filter(item => {
-          // On affiche seulement les billets réellement disponibles :
-          // soit un email billet a été enregistré, soit la réservation est payée,
-          // soit le SMS billet a déjà été marqué comme envoyé.
-          return !!item.reservationId && (item.testReservation || !!item.ticketEmailSentAt || item.allPaid || !!item.ticketSmsSentAt);
+          // Toute réservation confirmée possède désormais un billet valide, même si elle n’est pas encore payée.
+          return !!item.reservationId;
         })
         .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "fr", { sensitivity: "base" }));
     }
@@ -397,7 +408,7 @@
       counter.textContent = `${list.length} billet${list.length > 1 ? "s" : ""}`;
 
       if (!list.length) {
-        ticketsList.innerHTML = `<div class="empty">Aucun billet envoyé trouvé.</div>`;
+        ticketsList.innerHTML = `<div class="empty">Aucun billet disponible trouvé.</div>`;
         return;
       }
 
@@ -407,6 +418,9 @@
           name: r.name,
           email: r.email,
           phone: r.phone,
+          paid: !!r.allPaid,
+          amount: Number(r.amount || 0),
+          octoberRoseCount: Number(r.octoberRoseCount || 0),
           testReservation: !!r.testReservation
         };
 
@@ -422,7 +436,7 @@
                 <div class="name">${escapeHTML(r.name || "Inconnu")}</div>
                 <div class="seats">${escapeHTML(seatLabel)}</div>
               </div>
-              <span class="badge">${r.testReservation ? "🧪 TEST" : "✅ Billet disponible"}</span>
+              <span class="badge">${r.testReservation ? "🧪 TEST" : (r.octoberRoseCount > 0 && Number(r.amount || 0) <= 0 ? "🎀 Octobre Rose — gratuit" : (r.allPaid ? "✅ Billet payé" : "🎟️ Billet valide — paiement sur place"))}</span>
             </div>
 
             <div class="actions">
