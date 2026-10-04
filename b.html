@@ -168,6 +168,7 @@
         const seatIds = entries.map(([seatId]) => seatId);
         const allPaid = entries.every(([_, data]) => data && data.paid);
         const amount = Number(first.amount || 0);
+        const octoberRoseCount = entries.filter(([_, data]) => data && data.type === "octobre_rose").length;
 
         // QR COURT POUR DOUCHETTE RAPIDE.
         // Ancien format : un gros JSON avec nom, email, sièges, date, lieu...
@@ -189,7 +190,11 @@
             📍 ${escapeHTML(SHOW_PLACE)}<br>
             🪑 Siège(s) : ${escapeHTML(seatIds.join(", "))}<br>
             💶 Montant : ${amount.toFixed(2)} €<br>
-            <span class="${allPaid ? "status-paid" : "status-unpaid"}">${allPaid ? "✅ Paiement reçu" : "❌ Paiement non enregistré"}</span>
+            ${octoberRoseCount > 0 ? `🎀 <strong>Octobre Rose — association :</strong> ${octoberRoseCount} place(s) gratuite(s)<br>` : ""}
+            ${amount <= 0
+              ? `<span class="status-paid">✅ Aucun règlement à effectuer</span>`
+              : `<span class="${allPaid ? "status-paid" : "status-unpaid"}">${allPaid ? "✅ Paiement reçu" : "💳 À régler sur place — chèque ou espèces"}</span>
+                 ${allPaid ? "" : `<br><span class="small">En espèces, merci de prévoir l’appoint si possible.</span>`}`}
           </div>
 
           <div id="qrBox">
