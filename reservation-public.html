@@ -128,6 +128,52 @@
       font-weight:700;
     }
 
+    /* Message de responsabilisation affiché après une réservation réussie */
+    .attendance-modal{
+      display:none;
+      position:fixed;
+      inset:0;
+      z-index:10020;
+      background:rgba(35,20,12,.68);
+      padding:18px;
+      align-items:center;
+      justify-content:center;
+    }
+    .attendance-modal.open{display:flex;}
+    .attendance-dialog{
+      width:min(92vw,560px);
+      background:#fffdf5;
+      color:var(--texte);
+      border:2px solid var(--bord);
+      border-radius:18px;
+      box-shadow:0 18px 48px rgba(0,0,0,.32);
+      padding:26px 24px 22px;
+      text-align:center;
+    }
+    .attendance-dialog h2{
+      margin:0 0 14px;
+      color:#b94825;
+      font-size:26px;
+    }
+    .attendance-dialog p{
+      margin:0;
+      font-size:17px;
+      line-height:1.55;
+    }
+    .attendance-phone{
+      display:inline-block;
+      margin:6px 0;
+      font-size:21px;
+      font-weight:900;
+      color:#2f7b64;
+      white-space:nowrap;
+    }
+    .attendance-ack{
+      margin-top:20px;
+      min-width:220px;
+      background:var(--vert);
+    }
+
 </style>
 </head>
 <body>
@@ -172,7 +218,6 @@
             <div><label for="childCount">Enfants 9-14 ans <span id="publicPriceChild" class="price-note">10 €</span></label><input id="childCount" type="number" min="0" max="12" value="0" /></div>
             <div><label for="babyCount">Moins de 8 ans <span class="price-note">gratuit</span></label><input id="babyCount" type="number" min="0" max="12" value="0" /></div>
             <div><label for="freeCount">Accompagnants — réservé aux membres de la troupe <span class="price-note">gratuit</span></label><input id="freeCount" type="number" min="0" max="12" value="0" /></div>
-            <div><label for="octoberRoseCount">🎀 Octobre Rose — invitation association <span class="price-note">gratuit</span></label><input id="octoberRoseCount" type="number" min="0" max="12" value="0" /></div>
           </div>
           <div id="childWarning" class="full" style="
             display:none;
@@ -207,11 +252,46 @@
     </div>
   </div>
 
+
+  <div id="attendanceModal" class="attendance-modal" aria-hidden="true">
+    <div class="attendance-dialog" role="dialog" aria-modal="true" aria-labelledby="attendanceTitle" aria-describedby="attendanceText">
+      <h2 id="attendanceTitle">Merci pour votre réservation</h2>
+      <p id="attendanceText">
+        <strong>Nous comptons vraiment sur votre présence.</strong><br><br>
+        En cas d’empêchement, merci de nous prévenir au<br>
+        <span class="attendance-phone">06 46 32 06 49</span><br>
+        si possible <strong>au moins 48 heures à l’avance</strong>, afin que nous puissions proposer votre place à une autre personne.
+      </p>
+      <button id="attendanceAck" class="attendance-ack" type="button">J’ai pris connaissance</button>
+    </div>
+  </div>
+
 <script>
 
   const posterImage = document.getElementById("posterImage");
   const posterZoomModal = document.getElementById("posterZoomModal");
   const closePosterZoom = document.getElementById("closePosterZoom");
+
+
+  const attendanceModal = document.getElementById("attendanceModal");
+  const attendanceAck = document.getElementById("attendanceAck");
+
+  function openAttendanceNotice(){
+    if (!attendanceModal) return;
+    attendanceModal.classList.add("open");
+    attendanceModal.setAttribute("aria-hidden", "false");
+    document.body.style.overflow = "hidden";
+    setTimeout(() => attendanceAck?.focus(), 0);
+  }
+
+  function closeAttendanceNotice(){
+    if (!attendanceModal) return;
+    attendanceModal.classList.remove("open");
+    attendanceModal.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = "";
+  }
+
+  attendanceAck?.addEventListener("click", closeAttendanceNotice);
 
   function openPosterZoom(){
     if (!posterZoomModal) return;
@@ -444,7 +524,7 @@
             <strong>Email :</strong> ${escapeHTML(request.email)}<br>
             <strong>Téléphone :</strong> ${escapeHTML(request.phone)}<br>
             <strong>Places :</strong> ${safeSeats}<br>
-            <strong>Adultes :</strong> ${request.adultCount || 0} — <strong>Enfants :</strong> ${request.childCount || 0} — <strong>-8 ans :</strong> ${request.babyCount || 0} — <strong>Accompagnants :</strong> ${request.freeCount || 0} — <strong>Octobre Rose :</strong> ${request.octoberRoseCount || 0}<br>
+            <strong>Adultes :</strong> ${request.adultCount || 0} — <strong>Enfants :</strong> ${request.childCount || 0} — <strong>-8 ans :</strong> ${request.babyCount || 0} — <strong>Accompagnants :</strong> ${request.freeCount || 0}<br>
             <strong>Montant estimé :</strong> ${amount} €<br>
             <strong>Blocage jusqu’au :</strong> ${new Date(request.expiresAt).toLocaleString("fr-FR")}
           </div>
@@ -481,12 +561,11 @@
             <strong>Enfants 9-14 ans :</strong> ${request.childCount || 0}<br>
             <strong>Moins de 8 ans :</strong> ${request.babyCount || 0}<br>
             <strong>Accompagnants gratuits :</strong> ${request.freeCount || 0}<br>
-            <strong>🎀 Octobre Rose — association :</strong> ${request.octoberRoseCount || 0} place(s) gratuite(s)<br>
             <strong>Montant estimé :</strong> ${amount} €<br>
             <strong>Blocage jusqu’au :</strong> ${new Date(request.expiresAt).toLocaleString("fr-FR")}
           </div>
           <p style="font-size:18px;line-height:1.6;margin:0 0 14px;">
-           <strong>La réservation sera définitive uniquement après validation par la troupe. Vous recevrez ensuite un email de confirmation avec votre billet et votre QR code.</strong>
+           <strong>La réservation sera définitive uniquement après validation par la troupe. Vous recevrez ensuite un email de confirmation avec les informations pratiques pour le règlement sur place le soir de la représentation.</strong>
 
           </p>
           <p style="font-size:15px;line-height:1.6;margin:0;">
@@ -561,9 +640,8 @@
     const childCount = parseInt(document.getElementById("childCount").value, 10) || 0;
     const babyCount = parseInt(document.getElementById("babyCount").value, 10) || 0;
     const freeCount = parseInt(document.getElementById("freeCount").value, 10) || 0;
-    const octoberRoseCount = parseInt(document.getElementById("octoberRoseCount").value, 10) || 0;
     const message = document.getElementById("message").value.trim();
-    const totalPeople = adultCount + childCount + babyCount + freeCount + octoberRoseCount;
+    const totalPeople = adultCount + childCount + babyCount + freeCount;
     if(!selected.length) return showStatus("err", "Choisissez au moins une place sur le plan.");
     if(!name || !email || !phone) return showStatus("err", "Merci de compléter le nom, l’email et le téléphone.");
     if(!isValidEmail(email)) return showStatus("err", "❌ Adresse email invalide. Vérifiez qu’il n’y a pas d’espace, d’accent ou de point manquant.");
@@ -591,7 +669,7 @@
         if(!ok) throw new Error(`La place ${seatId} vient d’être prise.`);
         acquired.push(seatId);
       }
-      const payload = { id:requestId, status:"nouvelle", source:"reservation-public-plan", showId:SHOW_ID, spectacle:"Je préfère qu’on reste amies", date:"10 octobre 2026 à 20h30", lieu:"Salle ISLEA à Avermes 03", createdAt, expiresAt, name, email, phone, adultCount, childCount, babyCount, freeCount, octoberRoseCount, totalPeople, amount, seats, message, adminNotificationEmail:ADMIN_NOTIFICATION_EMAIL };
+      const payload = { id:requestId, status:"nouvelle", source:"reservation-public-plan", showId:SHOW_ID, spectacle:"Je préfère qu’on reste amies", date:"10 octobre 2026 à 20h30", lieu:"Salle ISLEA à Avermes 03", createdAt, expiresAt, name, email, phone, adultCount, childCount, babyCount, freeCount, totalPeople, amount, seats, message, adminNotificationEmail:ADMIN_NOTIFICATION_EMAIL };
       await dbSet(`${REQUESTS_PATH}/${requestId}`, payload);
 
       showStatus("ok", "✅ Demande enregistrée. Envoi des emails en cours…");
@@ -607,9 +685,9 @@
       document.getElementById("reservationForm").reset();
       document.getElementById("adultCount").value = 1;
       document.getElementById("freeCount").value = 0;
-      document.getElementById("octoberRoseCount").value = 0;
       selected = [];
       await loadState();
+      openAttendanceNotice();
     }catch(err){
       console.error(err);
       if(acquired.length) await releaseRequestHolds(requestId, acquired);
