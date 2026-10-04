@@ -105,6 +105,33 @@ h1 {
   background: linear-gradient(145deg, #26a69a, #00897b) !important;
 }
 
+/* 🎀 Repère visuel Octobre Rose : conserve la couleur normale du siège */
+.legend .october-rose-legend {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent !important;
+  font-size: 18px;
+  line-height: 1;
+}
+.seat .october-rose-ribbon {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  left: auto;
+  width: auto;
+  height: auto;
+  transform: none;
+  text-align: right;
+  font-size: 12px;
+  line-height: 1;
+  z-index: 6;
+  pointer-events: none;
+  filter: drop-shadow(0 1px 1px rgba(255,255,255,.9));
+}
+
 .held {
   background: linear-gradient(145deg, #9575cd, #5e35b1) !important;
   color: #ffffff !important;
@@ -1307,6 +1334,7 @@ body {
   <div><span class="held"></span>En attente public</div>
   <div><span class="strapontin"></span>Strapontin</div>
   <div><span class="paid"></span>Réservé et payé</div> <!-- 💚 ajouté -->
+  <div><span class="october-rose-legend">🎀</span>Octobre Rose</div>
   <div><span class="test-legend"></span>Test admin</div>
 </div>
 
@@ -2094,8 +2122,19 @@ function render() {
     el.className = "seat";
     if (wasStrap) el.classList.add("strapontin");
 
+    // Nettoie le ruban éventuel avant de recalculer l’état du siège.
+    el.querySelector(".october-rose-ribbon")?.remove();
+
     const seatData = getSeatDataForDisplay(id);
 if (seatData) {
+  if (seatData.type === "octobre_rose") {
+    const ribbon = document.createElement("span");
+    ribbon.className = "october-rose-ribbon";
+    ribbon.textContent = "🎀";
+    ribbon.setAttribute("aria-hidden", "true");
+    el.appendChild(ribbon);
+    el.title = "Octobre Rose — association";
+  }
   if (isTestReservationData(seatData)) {
     el.classList.add("test-seat");
     el.title = "Réservation fictive TEST";
@@ -4650,21 +4689,21 @@ function buildPublicConfirmationEmail(r) {
 
         ${amountValue <= 0 ? `
         <div style="background:#fff0f6;border:1px solid #ef9abb;border-radius:12px;padding:16px;margin:16px 0;line-height:1.75;">
-          <h3 style="margin:0 0 10px;color:#ad1457;">🎀 Réservation gratuite</h3>
+          <h3 style="margin:0 0 10px;color:#ad1457;">${octoberRoseCount > 0 ? "🎀 Invitation Octobre Rose" : "🎟️ Réservation gratuite"}</h3>
           <p style="margin:0;font-size:15px;line-height:1.7;">
-            ${octoberRoseCount > 0 ? `Cette réservation comprend <strong>${octoberRoseCount} place(s) Octobre Rose — association</strong>. Aucun règlement n’est à effectuer pour ces places.` : `Aucun règlement n’est à effectuer pour cette réservation.`}
+            ${octoberRoseCount > 0 ? `Vos <strong>${octoberRoseCount} place(s) Octobre Rose — association</strong> sont gratuites. <strong>Aucun règlement n’est à effectuer.</strong> Présentez simplement votre billet avec QR code à l’accueil.` : `<strong>Aucun règlement n’est à effectuer</strong> pour cette réservation. Présentez simplement votre billet avec QR code à l’accueil.`}
           </p>
         </div>
         ` : isPaid ? `
         <div style="background:#eef8ef;border:1px solid #bcd8c0;border-radius:12px;padding:16px;margin:16px 0;line-height:1.75;">
           <h3 style="margin:0 0 10px;color:#2d6a39;">✅ Règlement reçu</h3>
-          <p style="margin:0;font-size:15px;line-height:1.6;">Votre règlement est déjà enregistré.</p>
+          <p style="margin:0;font-size:15px;line-height:1.6;">Votre règlement est déjà enregistré.${octoberRoseCount > 0 ? ` Les <strong>${octoberRoseCount} place(s) Octobre Rose</strong> restent bien entendu gratuites.` : ""}</p>
         </div>
         ` : `
         <div style="background:#ffffff;border:1px solid #e3c99c;border-radius:12px;padding:16px;margin:16px 0;line-height:1.75;">
           <h3 style="margin:0 0 10px;color:#4a2416;">💳 Règlement sur place</h3>
           <p style="margin:0 0 10px;font-size:15px;line-height:1.6;">
-            Le règlement de <strong>${amount} €</strong> se fera <strong>à l’accueil le soir de la représentation</strong>.
+            Le règlement de <strong>${amount} €</strong> se fera <strong>à l’accueil le soir de la représentation</strong>.${octoberRoseCount > 0 ? ` Ce montant correspond uniquement aux places payantes ; les <strong>${octoberRoseCount} place(s) Octobre Rose</strong> sont gratuites.` : ""}
           </p>
           <p style="margin:0;font-size:15px;line-height:1.7;">
             Modes de règlement : <strong>chèque</strong> ou <strong>espèces</strong>.<br>
