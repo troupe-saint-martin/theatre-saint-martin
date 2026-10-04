@@ -1757,6 +1757,7 @@ function recalcClientReservation(clientName = "", clientEmail = "", reservationI
   const childCount = matchingEntries.filter(([_, s]) => s.type === "enfant").length;
   const babyCount  = matchingEntries.filter(([_, s]) => s.type === "moins8").length;
   const freeCount  = matchingEntries.filter(([_, s]) => s.type === "gratuit").length;
+  const octoberRoseCount = matchingEntries.filter(([_, s]) => s.type === "octobre_rose").length;
   const amount = adultCount * PRICE_ADULT + childCount * PRICE_CHILD;
 
   for (const [seatId, seatData] of matchingEntries) {
@@ -1766,6 +1767,7 @@ function recalcClientReservation(clientName = "", clientEmail = "", reservationI
       nbChild: childCount,
       nbBaby: babyCount,
       nbFree: freeCount,
+      nbOctoberRose: octoberRoseCount,
       amount,
       updatedAt: new Date().toISOString()
     };
@@ -1796,6 +1798,7 @@ async function syncPublicRequestAfterSeatChanges(requestId) {
     const childCount = remainingEntries.filter(([_, s]) => s.type === "enfant").length;
     const babyCount  = remainingEntries.filter(([_, s]) => s.type === "moins8").length;
     const freeCount  = remainingEntries.filter(([_, s]) => s.type === "gratuit").length;
+    const octoberRoseCount = remainingEntries.filter(([_, s]) => s.type === "octobre_rose").length;
     const amount = adultCount * PRICE_ADULT + childCount * PRICE_CHILD;
 
     const updatedRequest = {
@@ -1806,6 +1809,7 @@ async function syncPublicRequestAfterSeatChanges(requestId) {
       childCount,
       babyCount,
       freeCount,
+      octoberRoseCount,
       amount,
       updatedAt: new Date().toISOString(),
       syncedFromSalleAt: new Date().toISOString()
@@ -2362,14 +2366,8 @@ try {
   await sendEmail(user);
   directMailOk = true;
 
-  // Si la réservation est déjà cochée payée à la création, on envoie aussi le billet QR.
-  if (user.paid) {
-    await sendViaBrevo(
-      user.email,
-      "🎟️ Votre billet – Théâtre Saint-Martin",
-      generateBilletHTML(user)
-    );
-  }
+  // Le billet avec QR code est désormais inclus directement dans l’email de confirmation,
+  // même si le règlement n’est pas encore enregistré. Aucun deuxième email n’est envoyé ici.
 } catch (err) {
   console.error("❌ Email de réservation non envoyé", err);
 }
@@ -2405,6 +2403,7 @@ async function sendEmail(user) {
     childCount: Number(user.nbChild || 0),
     babyCount: Number(user.nbBaby || 0),
     freeCount: Number(user.nbFree || 0),
+    octoberRoseCount: Number(user.nbOctoberRose || 0),
     totalPeople: reservedSeatsArray.length,
     amount: Number(user.amount || 0),
     date: "10 octobre 2026 à 20h30",
@@ -2999,16 +2998,25 @@ updateTable(); // 🔄 rafraîchit le badge
 // 💬 SMS réservation : message + marquage partagé
 // ===================================================
 function getReservationSmsMessage(user = {}) {
-  const amount = formatSmsAmount(user.amount);
+  const amountValue = Number(user.amount || 0);
+  const amount = formatSmsAmount(amountValue);
+  const ticketLink = buildTicketPageUrl(user);
+  const isPaid = user.paid === true || user.allPaid === true;
+  const octoberRoseCount = Number(user.octoberRoseCount || 0);
 
   return "Bonjour,\n\n"
     + "✅ Nous avons bien validé votre réservation pour la représentation du 10\u200Boctobre\u200B2026 à 20 h 30 à ISLEA pour la pièce : \"Je préfère qu'on reste amies\".\n\n"
-    + "Un email de confirmation vous a été envoyé avec le récapitulatif complet et les informations de règlement. Pensez à vérifier vos spams.\n\n"
-    + "Règlement : " + amount + " €.\n"
-    + "Virement : IBAN FR76 1680 6008 2066 1344 2513 059 - BIC AGRIFRPP868.\n"
-    + "Chèque : à l’ordre de Théatre SAINT-MARTIN, à envoyer à Mme MARION, 11 bis rue de la garde, 03340 Bessay-sur-Allier.\n\n"
-    + "Important : si le règlement est au nom d’une autre personne, merci d’indiquer le nom de la réservation au dos du chèque ou dans le libellé du virement.\n\n"
-    + "Une fois le règlement reçu, vos billets avec QR code vous seront envoyés par email.\n\n"
+    + "Votre billet avec QR code vous a été envoyé par email. Pensez à vérifier vos spams.\n\n"
+    + (ticketLink ? "Vous pouvez aussi ouvrir votre billet ici :\n" + ticketLink + "\n\n" : "")
+    + (octoberRoseCount > 0 ? "🎀 Octobre Rose — association : " + octoberRoseCount + " place(s) gratuite(s).\n\n" : "")
+    + (amountValue <= 0
+        ? "✅ Aucun règlement à effectuer.\n\n"
+        : isPaid
+          ? "✅ Votre règlement est déjà enregistré.\n\n"
+          : "Montant à régler : " + amount + " €.\n"
+            + "Le règlement se fera sur place le soir de la représentation, par chèque ou en espèces.\n"
+            + "Si vous réglez en espèces, merci de prévoir l’appoint si possible.\n\n")
+    + "Le jour J, présentez votre billet avec QR code à l’accueil.\n\n"
     + "Merci pour votre soutien à la Troupe Saint-Martin. ❤️";
 }
 
@@ -3036,14 +3044,9 @@ function getPaymentInfoSmsMessage(user = {}) {
   return "Bonjour,\n\n"
     + "Voici les informations pour le règlement de votre réservation Théâtre Saint-Martin du 10 octobre 2026 à ISLEA.\n\n"
     + "Montant à régler : " + amount + " €.\n\n"
-    + "Par virement bancaire :\n"
-    + "IBAN : FR76 1680 6008 2066 1344 2513 059\n"
-    + "BIC : AGRIFRPP868\n"
-    + "Titulaire : ASSOCIATION D'EDUCATION POPULAIRE SAINT-MARTIN\n\n"
-    + "Ou par chèque :\n"
-    + "à l'ordre de : Théatre SAINT-MARTIN\n"
-    + "Adresse : Mme MARION - 11 bis rue de la garde 03340 Bessay-sur-Allier\n\n"
-    + "Important : si le règlement est effectué sous un nom différent de celui de la réservation, merci d’indiquer le nom de la réservation au dos du chèque ou dans le libellé du virement.\n\n"
+    + "Le règlement se fera sur place le soir de la représentation, à l’accueil, par chèque ou en espèces.\n"
+    + "Si vous réglez en espèces, merci de prévoir l’appoint si possible.\n\n"
+    + "Aucun règlement n’est à envoyer à l’avance.\n\n"
     + "Merci pour votre soutien à la Troupe Saint-Martin.";
 }
 
@@ -3109,7 +3112,7 @@ async function setReservationSmsStatus({ reservationId = "", clientName = "", cl
   updateStatsBar();
 }
 
-function openReservationSmsAndAskConfirmation({ phone = "", clientName = "", clientEmail = "", reservationId = "", amount = 0 } = {}) {
+function openReservationSmsAndAskConfirmation({ phone = "", clientName = "", clientEmail = "", reservationId = "", amount = 0, paid = false, octoberRoseCount = 0 } = {}) {
   const cleanPhone = cleanSmsPhone(phone);
   if (!cleanPhone) {
     alert("⚠️ Aucun numéro de téléphone disponible pour ouvrir le SMS.");
@@ -3120,7 +3123,9 @@ function openReservationSmsAndAskConfirmation({ phone = "", clientName = "", cli
     name: clientName,
     email: clientEmail,
     reservationId,
-    amount
+    amount,
+    paid,
+    octoberRoseCount
   });
   return true;
 }
@@ -3154,14 +3159,23 @@ function buildTicketPageUrl(user = {}) {
 
 function getTicketSmsMessage(user = {}) {
   const ticketLink = buildTicketPageUrl(user);
+  const amountValue = Number(user.amount || 0);
+  const amount = formatSmsAmount(amountValue);
+  const isPaid = user.paid === true || user.allPaid === true;
+  const octoberRoseCount = Number(user.octoberRoseCount || 0);
 
   return "Bonjour,\n\n"
-    + "✅ Bonne nouvelle : votre règlement a bien été reçu.\n\n"
-    + "Vous pouvez dès à présent consulter votre billet avec QR code pour la représentation du 10\u200Boctobre\u200B2026 à 20 h 30 à ISLEA en cliquant sur le lien ci-dessous 👇 :\n\n"
+    + "🎟️ Votre billet avec QR code pour la représentation du 10\u200Boctobre\u200B2026 à 20 h 30 à ISLEA est disponible ici 👇 :\n\n"
     + ticketLink + "\n\n"
-    + "Ce billet vous est également envoyé par email avec votre QR code.\n\n"
-    + "Le jour J, pensez à présenter votre billet à l’entrée, histoire de ne pas jouer une scène d’improvisation dès l’accueil. 😉\n\n"
-    + "ℹ️ SMS automatique — pour toute question, contactez-nous au 06 46 32 06 49.\n\n"
+    + (octoberRoseCount > 0 ? "🎀 Octobre Rose — association : " + octoberRoseCount + " place(s) gratuite(s).\n\n" : "")
+    + (amountValue <= 0
+        ? "✅ Aucun règlement à effectuer.\n\n"
+        : isPaid
+          ? "✅ Votre règlement est déjà enregistré.\n\n"
+          : "Montant à régler sur place : " + amount + " €.\n"
+            + "Paiement par chèque ou en espèces. Si vous réglez en espèces, merci de prévoir l’appoint si possible.\n\n")
+    + "Le jour J, présentez ce billet à l’entrée.\n\n"
+    + "ℹ️ Pour toute question, contactez-nous au 06 46 32 06 49.\n\n"
     + "Merci pour votre soutien à la Troupe Saint-Martin. ❤️";
 }
 
@@ -3232,10 +3246,12 @@ function updateTable() {
     const children = Number(r.childCount || 0);
     const babies = Number(r.babyCount || 0);
     const freeCount = Number(r.freeCount || 0);
+    const octoberRoseCount = Number(r.octoberRoseCount || 0);
     if (index < adults) return "adulte";
     if (index < adults + children) return "enfant";
     if (index < adults + children + babies) return "moins8";
     if (index < adults + children + babies + freeCount) return "gratuit";
+    if (index < adults + children + babies + freeCount + octoberRoseCount) return "octobre_rose";
     return "autre";
   }
 
@@ -3307,6 +3323,7 @@ function updateTable() {
       nbChild: Number(r.childCount || 0),
       nbBaby: Number(r.babyCount || 0),
       nbFree: Number(r.freeCount || 0),
+      nbOctoberRose: Number(r.octoberRoseCount || 0),
       seats: seatList.map((seatId, index) => ({
         id: seatId,
         paid: !!r.paid,
@@ -3344,8 +3361,12 @@ function updateTable() {
     }`;
 
     const hasFreeSeat = info.seats.some(s => s.type === "gratuit");
+    const hasOctoberRoseSeat = info.seats.some(s => s.type === "octobre_rose");
     const freeBadge = hasFreeSeat
       ? '<span style="width:22px;height:22px;border-radius:50%;background:#8e24aa;color:white;font-weight:700;display:inline-flex;align-items:center;justify-content:center;font-size:13px;">G</span>'
+      : '';
+    const octoberRoseBadge = hasOctoberRoseSeat
+      ? '<span style="display:inline-flex;align-items:center;gap:4px;background:#f8bbd0;color:#880e4f;border-radius:999px;padding:3px 8px;font-size:12px;font-weight:900;">🎀 Octobre Rose</span>'
       : '';
 
     const statusLabel = info.allPaid
@@ -3368,6 +3389,7 @@ function updateTable() {
   <div class="badge-container" style="display:flex;align-items:center;gap:8px;">
     <span>${statusLabel}</span>
     ${freeBadge}
+    ${octoberRoseBadge}
   </div>
 `;
 
@@ -3435,11 +3457,15 @@ function updateTable() {
       name,
       email: info.email || "",
       phone: info.phone || "",
+      paid: !!info.allPaid,
+      amount: reservationAmount,
+      octoberRoseCount: info.seats.filter(s => s.type === "octobre_rose").length,
       testReservation: !!info.isTestReservation
     };
 
-    const ticketSmsLine = info.allPaid
-      ? (info.phone ? `
+    const ticketSmsLine = isPendingPublic
+      ? `<p style="margin:6px 0;color:#777;font-weight:600;">🎟️ Billet disponible après validation de la réservation.</p>`
+      : (info.phone ? `
         <p style="margin:6px 0;">
           <a
             class="ticket-sms-link"
@@ -3465,8 +3491,7 @@ function updateTable() {
           >
           <span>${info.ticketSmsSentAt ? "✅ SMS" : "❌ SMS"}</span>
           ${info.ticketSmsSentAt ? `<small style="font-weight:500;color:#555;">${new Date(info.ticketSmsSentAt).toLocaleString("fr-FR")}</small>` : ""}
-        </label>` : `<p style="margin:6px 0;color:#777;font-weight:600;">⚠️ SMS billet impossible : aucun téléphone.</p>`)
-      : `<p style="margin:6px 0;color:#777;font-weight:600;">🎟️ SMS billet : après paiement.</p>`;
+        </label>` : `<p style="margin:6px 0;color:#777;font-weight:600;">⚠️ SMS billet impossible : aucun téléphone.</p>`);
 
     const paymentSmsUser = {
       reservationId,
@@ -3529,6 +3554,7 @@ function updateTable() {
         <span><b>🧒 Enfants</b> ${children.length} × ${PRICE_CHILD} € <em>${children.map(s => escapeHTML(s.id)).join(", ") || "—"}</em></span>
         <span><b>🍼 -8 ans</b> ${babies.filter(s => s.type === "moins8").length} <em>${babies.filter(s => s.type === "moins8").map(s => escapeHTML(s.id)).join(", ") || "—"}</em></span>
         <span><b>🎟️ Gratuit</b> ${info.seats.filter(s => s.type === "gratuit").length} <em>${info.seats.filter(s => s.type === "gratuit").map(s => escapeHTML(s.id)).join(", ") || "—"}</em></span>
+        <span><b>🎀 Octobre Rose</b> ${info.seats.filter(s => s.type === "octobre_rose").length} <em>${info.seats.filter(s => s.type === "octobre_rose").map(s => escapeHTML(s.id)).join(", ") || "—"}</em></span>
       </div>
     </div>
 
@@ -3540,6 +3566,7 @@ function updateTable() {
       <div class="seat-list compact-seat-list">
       ${info.seats.map(s => {
         const icon =
+          s.type === "octobre_rose" ? "🎀" :
           s.type === "moins8" || s.type === "gratuit" ? "🎟️" :
           s.type === "adulte" ? "🧍" :
           s.type === "enfant" ? "🧒" : "🎟️";
@@ -3658,35 +3685,8 @@ function updateTable() {
       updateTable();
       updateStatsBar();
 
-      const clientSeat = matchingSeats.map(([_, s]) => s).find(Boolean);
-      if (isPaid && clientSeat?.email) {
-        try {
-          const userForTicket = {
-            reservationId,
-            name: clientSeat.name,
-            email: clientSeat.email,
-            phone: clientSeat.phone || "",
-            paid: true,
-            amount: clientSeat.amount || 0
-          };
-
-          const html = generateBilletHTML(userForTicket);
-
-          await sendViaBrevo(
-            clientSeat.email,
-            "🎟️ Votre billet – Théâtre Saint-Martin",
-            html
-          );
-
-          const smsOpened = openTicketSmsForUser(userForTicket);
-          if (!smsOpened) {
-            alert(`✅ Paiement validé. Billet envoyé par email à ${clientSeat.email}. Aucun téléphone disponible pour le SMS.`);
-          }
-        } catch (err) {
-          console.error("Erreur d’envoi du billet :", err);
-          alert("✅ Paiement validé, mais le billet n’a pas pu être envoyé. Regarde la console.");
-        }
-      }
+      // Le statut de paiement reste indépendant du billet.
+      // Cocher « payé » met uniquement à jour le paiement : aucun nouvel email ni SMS billet n’est envoyé.
     });
   });
 };
@@ -3819,37 +3819,68 @@ document.addEventListener("click", async (e) => {
 // 🎟️ Génération HTML du billet (client principal)
 // ===================================================
 function generateBilletHTML(user) {
+  const reservationId = String(user.reservationId || "").trim();
   const reservedSeats = Object.entries(seats)
-    .filter(([_, s]) => s.email === user.email)
+    .filter(([_, s]) => reservationId ? s.reservationId === reservationId : s.email === user.email)
     .map(([id]) => id)
+    .sort((a, b) => String(a).localeCompare(String(b), "fr", { numeric: true }))
     .join(", ");
 
-  const qrData = JSON.stringify({
-    nom: user.name,
-    email: user.email,
-    tel: user.phone,
-    sieges: reservedSeats
-  });
+  const qrData = reservationId
+    ? `R:${reservationId}`
+    : JSON.stringify({
+        nom: user.name,
+        email: user.email,
+        tel: user.phone,
+        sieges: reservedSeats
+      });
 
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(qrData)}`;
+  const amountValue = Number(user.amount || 0);
+  const amount = amountValue.toFixed(2).replace(".", ",");
+  const octoberRoseCount = Object.entries(seats)
+    .filter(([_, s]) => reservationId ? s.reservationId === reservationId : s.email === user.email)
+    .filter(([_, s]) => s.type === "octobre_rose").length;
 
   return `
-    <h2>🎭 Votre billet — Théâtre Saint Martin</h2>
+    <h2>🎭 Votre billet — Théâtre Saint-Martin</h2>
 
     <p>
-      Merci de votre réservation <strong>${user.name}</strong>,<br>
-      Voici votre billet à présenter à l’entrée du spectacle,
+      Merci de votre réservation <strong>${escapeHTML(user.name || "")}</strong>,<br>
+      voici votre billet à présenter à l’entrée du spectacle,
       soit <strong>imprimé</strong>, soit sur <strong>votre téléphone</strong>.
     </p>
 
-    <p><strong>🎟️ Sièges réservés :</strong> ${reservedSeats}</p>
+    <p><strong>🎟️ Sièges réservés :</strong> ${escapeHTML(reservedSeats)}</p>
 
     <img src="${qrUrl}" alt="QR Code" style="margin-top:12px;" />
 
     <p style="margin-top:12px;">
       📅 <strong>10 octobre 2026 à 20h30</strong><br>
-      📍 Théâtre Saint Martin
+      📍 <strong>Salle ISLEA à Avermes (03)</strong>
     </p>
+
+    ${octoberRoseCount > 0 ? `
+      <div style="padding:12px;background:#fff0f6;border:1px solid #ef9abb;border-radius:10px;line-height:1.6;margin-bottom:10px;">
+        🎀 <strong>Octobre Rose — association :</strong> ${octoberRoseCount} place(s) gratuite(s).
+      </div>
+    ` : ""}
+
+    ${amountValue <= 0 ? `
+      <p style="padding:12px;background:#eef8ef;border:1px solid #bcd8c0;border-radius:10px;">
+        ✅ <strong>Aucun règlement à effectuer.</strong>
+      </p>
+    ` : user.paid ? `
+      <p style="padding:12px;background:#eef8ef;border:1px solid #bcd8c0;border-radius:10px;">
+        ✅ <strong>Règlement reçu.</strong>
+      </p>
+    ` : `
+      <div style="padding:12px;background:#fff7e8;border:1px solid #e3c99c;border-radius:10px;line-height:1.6;">
+        💳 <strong>Règlement sur place : ${amount} €</strong><br>
+        Le règlement se fera à l’accueil le soir de la représentation, par <strong>chèque</strong> ou en <strong>espèces</strong>.<br>
+        Si vous réglez en espèces, merci de prévoir <strong>l’appoint si possible</strong>.
+      </div>
+    `}
 
     <p>À très bientôt 🎭</p>
   `;
@@ -3885,6 +3916,7 @@ document.addEventListener("click", async (e) => {
   }
 
   const user = {
+    reservationId: clientSeats[0][1].reservationId || "",
     name,
     email,
     phone: clientSeats[0][1].phone || "",
@@ -4558,6 +4590,7 @@ function distributePublicRequestSeatTypes(r) {
   let child = Number(r.childCount || 0);
   let baby = Number(r.babyCount || 0);
   let free = Number(r.freeCount || 0);
+  let octoberRose = Number(r.octoberRoseCount || 0);
 
   return (Array.isArray(r.seats) ? r.seats : []).map(seatId => {
     let type = "autre";
@@ -4565,6 +4598,7 @@ function distributePublicRequestSeatTypes(r) {
     else if (child > 0) { type = "enfant"; child--; }
     else if (baby > 0) { type = "moins8"; baby--; }
     else if (free > 0) { type = "gratuit"; free--; }
+    else if (octoberRose > 0) { type = "octobre_rose"; octoberRose--; }
     return { seatId, type };
   });
 }
@@ -4576,8 +4610,14 @@ function buildPublicConfirmationEmail(r) {
   const childCount = Number(r.childCount || 0);
   const babyCount = Number(r.babyCount || 0);
   const freeCount = Number(r.freeCount || 0);
+  const octoberRoseCount = Number(r.octoberRoseCount || 0);
   const totalPeople = Number(r.totalPeople || seatsList.length || 0);
   const isPaid = !!r.paid;
+  const amountValue = Number(r.amount || 0);
+  const reservationId = String(r.id || r.reservationId || "").trim();
+  const qrData = reservationId ? `R:${reservationId}` : "";
+  const qrUrl = qrData ? `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrData)}` : "";
+  const ticketUrl = reservationId ? `${TICKET_PAGE_BASE_URL}?r=${encodeURIComponent(reservationId)}` : "";
 
   return `
     <div style="font-family:Arial,Helvetica,sans-serif;background:#f6ead2;padding:22px;color:#342014;">
@@ -4597,52 +4637,46 @@ function buildPublicConfirmationEmail(r) {
           <strong>Enfants :</strong> ${childCount}<br>
           <strong>Moins de 8 ans :</strong> ${babyCount}<br>
           <strong>Accompagnants gratuits :</strong> ${freeCount}<br>
-          <strong>Montant total à régler :</strong> ${amount} €
+          <strong>🎀 Octobre Rose — association :</strong> ${octoberRoseCount} place(s) gratuite(s)<br>
+          <strong>Montant total :</strong> ${amount} €
         </div>
 
-        ${isPaid ? `
+        <div style="background:#eef5ff;border:1px solid #b7cae8;border-radius:12px;padding:16px;margin:16px 0;text-align:center;line-height:1.6;">
+          <h3 style="margin:0 0 10px;color:#174a7e;">🎟️ Votre billet avec QR code</h3>
+          <p style="margin:0 0 12px;">Présentez ce billet à l’accueil, sur votre téléphone ou imprimé.</p>
+          ${qrUrl ? `<img src="${qrUrl}" alt="QR Code du billet" width="220" height="220" style="display:block;margin:12px auto;max-width:100%;height:auto;">` : ""}
+          ${ticketUrl ? `<p style="margin:12px 0 0;"><a href="${ticketUrl}" style="display:inline-block;background:#1976d2;color:#fff;text-decoration:none;padding:10px 16px;border-radius:8px;font-weight:bold;">Ouvrir mon billet</a></p>` : ""}
+        </div>
+
+        ${amountValue <= 0 ? `
+        <div style="background:#fff0f6;border:1px solid #ef9abb;border-radius:12px;padding:16px;margin:16px 0;line-height:1.75;">
+          <h3 style="margin:0 0 10px;color:#ad1457;">🎀 Réservation gratuite</h3>
+          <p style="margin:0;font-size:15px;line-height:1.7;">
+            ${octoberRoseCount > 0 ? `Cette réservation comprend <strong>${octoberRoseCount} place(s) Octobre Rose — association</strong>. Aucun règlement n’est à effectuer pour ces places.` : `Aucun règlement n’est à effectuer pour cette réservation.`}
+          </p>
+        </div>
+        ` : isPaid ? `
         <div style="background:#eef8ef;border:1px solid #bcd8c0;border-radius:12px;padding:16px;margin:16px 0;line-height:1.75;">
           <h3 style="margin:0 0 10px;color:#2d6a39;">✅ Règlement reçu</h3>
-          <p style="margin:0;font-size:15px;line-height:1.6;">
-            Votre réservation est indiquée comme réglée.
-          </p>
+          <p style="margin:0;font-size:15px;line-height:1.6;">Votre règlement est déjà enregistré.</p>
         </div>
         ` : `
         <div style="background:#ffffff;border:1px solid #e3c99c;border-radius:12px;padding:16px;margin:16px 0;line-height:1.75;">
-          <h3 style="margin:0 0 10px;color:#4a2416;">💳 Règlement</h3>
-          <p style="margin:0 0 12px;font-size:15px;line-height:1.6;">
-            Afin de finaliser votre réservation, merci d’effectuer votre règlement dans un délai de
-            <strong>7 jours après réception de cet email</strong>.
+          <h3 style="margin:0 0 10px;color:#4a2416;">💳 Règlement sur place</h3>
+          <p style="margin:0 0 10px;font-size:15px;line-height:1.6;">
+            Le règlement de <strong>${amount} €</strong> se fera <strong>à l’accueil le soir de la représentation</strong>.
           </p>
-          <p style="margin:0 0 12px;font-size:15px;line-height:1.6;">
-            <strong>Vos billets avec QR code vous seront envoyés par email dès réception de votre règlement.</strong>
-          </p>
-          <p style="margin:0 0 12px;font-size:15px;line-height:1.6;">
-            Sans règlement passé ce délai, la réservation pourra être annulée afin de libérer les places.
-          </p>
-          <div style="background:#f8f3ea;border-radius:10px;padding:12px;margin:12px 0;">
-            <strong>Par virement bancaire :</strong><br>
-            IBAN : <strong>FR76  1680  6008  2066  1344  2513  059 </strong><br>
-            BIC : <strong>AGRIFRPP868</strong><br>
-            Titulaire du compte : <strong>ASSOCIATION D'EDUCATION POPULAIRE SAINT-MARTIN</strong>
-          </div>
-          <div style="background:#f8f3ea;border-radius:10px;padding:12px;margin:12px 0;">
-            <strong>Ou par chèque :</strong><br>
-            Chèque à l’ordre de : <strong>Théatre SAINT-MARTIN</strong><br>
-            Adresse d’envoi du chèque :<br>
-            <strong>Mme MARION - 11 bis rue de la garde 03340 Bessay-sur-Allier</strong>
-          </div>
-          <p style="margin:12px 0 0;font-size:15px;line-height:1.6;">
-            <strong>Important :</strong> si le chèque n’est pas au même nom que la réservation,
-            merci d’indiquer au dos du chèque le nom utilisé pour la réservation.
-            Vous pouvez aussi imprimer cet email et le joindre au chèque.
+          <p style="margin:0;font-size:15px;line-height:1.7;">
+            Modes de règlement : <strong>chèque</strong> ou <strong>espèces</strong>.<br>
+            Si vous réglez en espèces, merci de prévoir <strong>l’appoint si possible</strong>.<br>
+            <strong>Aucun règlement n’est à envoyer à l’avance.</strong>
           </p>
         </div>
         `}
 
         <p style="font-size:15px;line-height:1.6;margin:16px 0 0;">Pour toute question : <strong>06&nbsp;46&nbsp;32&nbsp;06&nbsp;49</strong>.</p>
         <p style="margin:16px 0 0;font-size:15px;line-height:1.6;">À très bientôt,<br><strong>La Troupe Saint-Martin</strong></p>
-        <p style="margin:18px 0 0;color:#777;font-size:12px;">Référence : ${escapeHTML(r.id)}</p>
+        <p style="margin:18px 0 0;color:#777;font-size:12px;">Référence : ${escapeHTML(reservationId)}</p>
       </div>
     </div>`;
 }
@@ -4708,6 +4742,7 @@ async function confirmPublicRequestFromSalle(id) {
     nbChild: Number(r.childCount || 0),
     nbBaby: Number(r.babyCount || 0),
     nbFree: Number(r.freeCount || 0),
+    nbOctoberRose: Number(r.octoberRoseCount || 0),
     amount: Number(r.amount || (Number(r.adultCount || 0) * PRICE_ADULT + Number(r.childCount || 0) * PRICE_CHILD)),
     source: "public_request",
     showId: "amies_2026_10_11",
@@ -4718,7 +4753,8 @@ async function confirmPublicRequestFromSalle(id) {
     seats[item.seatId] = {
       ...base,
       type: item.type,
-      paid: (item.type === "moins8" || item.type === "gratuit") ? true : base.paid
+      paid: (["moins8", "gratuit", "octobre_rose"].includes(item.type)) ? true : base.paid,
+      free: ["moins8", "gratuit", "octobre_rose"].includes(item.type)
     };
   }
 
@@ -4742,36 +4778,27 @@ async function confirmPublicRequestFromSalle(id) {
   }
 
   let mailOk = false;
-  let ticketOk = !base.paid;
 
   try {
     await sendViaBrevo(
       base.email,
-      "✅ Réservation confirmée — Je préfère qu’on reste amies",
+      "✅ Réservation confirmée + votre billet — Je préfère qu’on reste amies",
       buildPublicConfirmationEmail({ id, ...r, paid: base.paid })
     );
     mailOk = true;
 
-    if (base.paid) {
-      await sendViaBrevo(
-        base.email,
-        "🎟️ Votre billet – Théâtre Saint-Martin",
-        generateBilletHTML(base)
-      );
-      ticketOk = true;
-    }
-
+    const sentAt = new Date().toISOString();
     await setPublicRequestFull(id, {
       ...r,
       paid: base.paid,
       status: "confirmee",
-      confirmedAt: new Date().toISOString(),
-      confirmationEmailSentAt: new Date().toISOString(),
-      ticketEmailSentAt: base.paid ? new Date().toISOString() : (r.ticketEmailSentAt || null),
-      updatedAt: new Date().toISOString()
+      confirmedAt: sentAt,
+      confirmationEmailSentAt: sentAt,
+      ticketEmailSentAt: sentAt,
+      updatedAt: sentAt
     });
   } catch (err) {
-    console.error("Email de confirmation ou billet non envoyé", err);
+    console.error("Email de confirmation avec billet non envoyé", err);
   }
 
   render();
@@ -4779,8 +4806,8 @@ async function confirmPublicRequestFromSalle(id) {
   updateStatsBar();
 
   const finalMessage = mailOk
-    ? (ticketOk ? "✅ Réservation confirmée et email envoyé." : "✅ Réservation confirmée, mais le billet n’a pas pu être envoyé.")
-    : "✅ Réservation confirmée, mais l’email n’a pas pu être envoyé.";
+    ? "✅ Réservation confirmée et email avec billet envoyé."
+    : "✅ Réservation confirmée, mais l’email avec billet n’a pas pu être envoyé.";
 
   alert(base.phone
     ? `${finalMessage}\n\n📲 Le SMS pré-rempli va maintenant s’ouvrir. Coche ensuite la case “SMS envoyé” dans la réservation si tu l’as bien envoyé.`
@@ -4792,7 +4819,9 @@ async function confirmPublicRequestFromSalle(id) {
       clientName: base.name,
       clientEmail: base.email,
       reservationId: id,
-      amount: base.amount
+      amount: base.amount,
+      paid: base.paid,
+      octoberRoseCount: Number(r.octoberRoseCount || 0)
     });
   }
 }
