@@ -52,6 +52,7 @@
   const HOLDS_PATH = `spectacles/${SHOW_ID}/holds`;
   const REQUESTS_PATH = `spectacles/${SHOW_ID}/public_requests`;
   const PRICES_PATH = `spectacles/${SHOW_ID}/prices`;
+  const TICKET_PAGE_BASE_URL = "https://troupe-saint-martin.github.io/theatre-saint-martin/b.html";
   let PRICE_ADULT = 14;
   let PRICE_CHILD = 10;
 
@@ -130,7 +131,14 @@
     const adultCount = Number(r.adultCount || 0);
     const childCount = Number(r.childCount || 0);
     const babyCount = Number(r.babyCount || 0);
+    const freeCount = Number(r.freeCount || 0);
+    const octoberRoseCount = Number(r.octoberRoseCount || 0);
     const totalPeople = Number(r.totalPeople || seats.length || 0);
+    const amountValue = Number(r.amount || 0);
+    const reservationId = String(r.id || "").trim();
+    const qrData = reservationId ? `R:${reservationId}` : "";
+    const qrUrl = qrData ? `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrData)}` : "";
+    const ticketUrl = reservationId ? `${TICKET_PAGE_BASE_URL}?r=${encodeURIComponent(reservationId)}` : "";
 
     return `
       <div style="font-family:Arial,Helvetica,sans-serif;background:#f6ead2;padding:22px;color:#342014;">
@@ -154,41 +162,38 @@
             <strong>Adultes :</strong> ${adultCount}<br>
             <strong>Enfants :</strong> ${childCount}<br>
             <strong>BB / -8 ans :</strong> ${babyCount}<br>
-            <strong>Montant total à régler :</strong> ${amount} €
+            <strong>Accompagnants gratuits :</strong> ${freeCount}<br>
+            <strong>🎀 Octobre Rose — association :</strong> ${octoberRoseCount} place(s) gratuite(s)<br>
+            <strong>Montant total :</strong> ${amount} €
           </div>
 
+          <div style="background:#eef5ff;border:1px solid #b7cae8;border-radius:12px;padding:16px;margin:16px 0;text-align:center;line-height:1.6;">
+            <h3 style="margin:0 0 10px;color:#174a7e;">🎟️ Votre billet avec QR code</h3>
+            <p style="margin:0 0 12px;">Présentez ce billet à l’accueil, sur votre téléphone ou imprimé.</p>
+            ${qrUrl ? `<img src="${qrUrl}" alt="QR Code du billet" width="220" height="220" style="display:block;margin:12px auto;max-width:100%;height:auto;">` : ""}
+            ${ticketUrl ? `<p style="margin:12px 0 0;"><a href="${ticketUrl}" style="display:inline-block;background:#1976d2;color:#fff;text-decoration:none;padding:10px 16px;border-radius:8px;font-weight:bold;">Ouvrir mon billet</a></p>` : ""}
+          </div>
+
+          ${amountValue <= 0 ? `
+          <div style="background:#fff0f6;border:1px solid #ef9abb;border-radius:12px;padding:16px;margin:16px 0;line-height:1.75;">
+            <h3 style="margin:0 0 10px;color:#ad1457;">🎀 Réservation gratuite</h3>
+            <p style="margin:0;font-size:15px;line-height:1.7;">
+              ${octoberRoseCount > 0 ? `Cette réservation comprend <strong>${octoberRoseCount} place(s) Octobre Rose — association</strong>.` : `Aucun règlement n’est à effectuer pour cette réservation.`}
+            </p>
+          </div>
+          ` : `
           <div style="background:#ffffff;border:1px solid #e3c99c;border-radius:12px;padding:16px;margin:16px 0;line-height:1.75;">
-            <h3 style="margin:0 0 10px;color:#4a2416;">💳 Règlement</h3>
-
-            <p style="margin:0 0 12px;font-size:15px;line-height:1.6;">
-              Afin de finaliser votre réservation, merci d’effectuer votre règlement dans un délai de
-              <strong>7 jours après réception de cet email</strong>.
+            <h3 style="margin:0 0 10px;color:#4a2416;">💳 Règlement sur place</h3>
+            <p style="margin:0 0 10px;font-size:15px;line-height:1.6;">
+              Le règlement de <strong>${amount} €</strong> se fera <strong>à l’accueil le soir de la représentation</strong>.
             </p>
-
-            <p style="margin:0 0 12px;font-size:15px;line-height:1.6;">
-              Sans règlement passé ce délai, la réservation pourra être annulée afin de libérer les places.
-            </p>
-
-            <div style="background:#f8f3ea;border-radius:10px;padding:12px;margin:12px 0;">
-              <strong>Par virement bancaire :</strong><br>
-              IBAN : <strong>[à compléter]</strong><br>
-              BIC : <strong>[à compléter]</strong><br>
-              Titulaire du compte : <strong>[à compléter]</strong>
-            </div>
-
-            <div style="background:#f8f3ea;border-radius:10px;padding:12px;margin:12px 0;">
-              <strong>Ou par chèque :</strong><br>
-              Chèque à l’ordre de : <strong>[à compléter]</strong><br>
-              Adresse d’envoi du chèque :<br>
-              <strong>[à compléter]</strong>
-            </div>
-
-            <p style="margin:12px 0 0;font-size:15px;line-height:1.6;">
-              <strong>Important :</strong> si le chèque n’est pas au même nom que la réservation,
-              merci d’indiquer au dos du chèque le nom utilisé pour la réservation.
-              Vous pouvez aussi imprimer cet email et le joindre au chèque.
+            <p style="margin:0;font-size:15px;line-height:1.7;">
+              Modes de règlement : <strong>chèque</strong> ou <strong>espèces</strong>.<br>
+              Si vous réglez en espèces, merci de prévoir <strong>l’appoint si possible</strong>.<br>
+              <strong>Aucun règlement n’est à envoyer à l’avance.</strong>
             </p>
           </div>
+          `}
 
           <p style="font-size:15px;line-height:1.6;margin:16px 0 0;">
             Pour toute question : <strong>06&nbsp;46&nbsp;32&nbsp;06&nbsp;49</strong>.
@@ -199,7 +204,7 @@
           </p>
 
           <p style="margin:18px 0 0;color:#777;font-size:12px;">
-            Référence : ${escapeHTML(r.id)}
+            Référence : ${escapeHTML(reservationId)}
           </p>
         </div>
       </div>`;
@@ -235,7 +240,7 @@
     const total = Number(r.totalPeople || seats.length || 0);
     return `<article class="card ${escapeHTML(status)}">
       <div class="top"><div><div class="name">${escapeHTML(r.name || "Sans nom")}</div><div class="meta">Référence : ${escapeHTML(r.id)}<br>${fmtDate(r.createdAt)} — Statut : <strong>${escapeHTML(status)}</strong>${expired ? ` — <span class="warn">blocage expiré</span>` : ""}</div></div><div><strong>${total}</strong> place(s)</div></div>
-      <div class="grid"><div class="info">📧 <strong>Email</strong><br>${escapeHTML(r.email||"—")}</div><div class="info">📱 <strong>Téléphone</strong><br>${escapeHTML(r.phone||"—")}</div><div class="info">👥 <strong>Détail</strong><br>Adultes : ${r.adultCount||0}<br>9-14 ans : ${r.childCount||0}<br>-8 ans : ${r.babyCount||0}</div><div class="info">💰 <strong>Montant</strong><br>${Number(r.amount||0).toFixed(2)} €</div></div>
+      <div class="grid"><div class="info">📧 <strong>Email</strong><br>${escapeHTML(r.email||"—")}</div><div class="info">📱 <strong>Téléphone</strong><br>${escapeHTML(r.phone||"—")}</div><div class="info">👥 <strong>Détail</strong><br>Adultes : ${r.adultCount||0}<br>9-14 ans : ${r.childCount||0}<br>-8 ans : ${r.babyCount||0}<br>Accompagnants : ${r.freeCount||0}<br>🎀 Octobre Rose : ${r.octoberRoseCount||0}</div><div class="info">💰 <strong>Montant</strong><br>${Number(r.amount||0).toFixed(2)} €</div></div>
       <div class="seats">🎟️ Places demandées : ${seats.map(escapeHTML).join(", ") || "—"}${taken.length ? `<br><span class="warn">Déjà réservées ailleurs : ${taken.map(escapeHTML).join(", ")}</span>` : ""}${holdMissing.length && status === "nouvelle" ? `<br><span class="warn">Blocage absent ou expiré : ${holdMissing.map(escapeHTML).join(", ")}</span>` : ""}</div>
       ${r.message ? `<div class="message"><strong>Message :</strong><br>${escapeHTML(r.message)}</div>` : ""}
       <div class="actions"><button class="blue" onclick="location.href='mailto:${encodeURIComponent(r.email||"")}'">Écrire</button><button class="orange" onclick="location.href='tel:${String(r.phone||"").replace(/\D/g,"")}'">Appeler</button><button onclick="setStatus('${r.id}','contactee')">Contactée</button><button onclick="confirmRequest('${r.id}')" ${status === "confirmee" ? "disabled" : ""}>✅ Valider + envoyer confirmation</button><button class="red" onclick="refuseRequest('${r.id}')">Refuser + libérer</button><button class="grey" onclick="archiveRequest('${r.id}')">Archiver</button><button class="red" onclick="deleteRequest('${r.id}')">Supprimer</button></div>
@@ -244,8 +249,16 @@
   async function setStatus(id, status){ await dbPatch(`${REQUESTS_PATH}/${id}`, {status, updatedAt:new Date().toISOString()}); await loadRequests(); }
   window.setStatus = setStatus;
   function distributeSeatTypes(r){
-    let adult = Number(r.adultCount||0), child = Number(r.childCount||0), baby = Number(r.babyCount||0);
-    return (r.seats || []).map(seatId => { let type = "autre"; if(adult > 0){ type="adulte"; adult--; } else if(child > 0){ type="enfant"; child--; } else if(baby > 0){ type="moins8"; baby--; } return {seatId, type}; });
+    let adult = Number(r.adultCount||0), child = Number(r.childCount||0), baby = Number(r.babyCount||0), free = Number(r.freeCount||0), octoberRose = Number(r.octoberRoseCount||0);
+    return (r.seats || []).map(seatId => {
+      let type = "autre";
+      if(adult > 0){ type="adulte"; adult--; }
+      else if(child > 0){ type="enfant"; child--; }
+      else if(baby > 0){ type="moins8"; baby--; }
+      else if(free > 0){ type="gratuit"; free--; }
+      else if(octoberRose > 0){ type="octobre_rose"; octoberRose--; }
+      return {seatId, type};
+    });
   }
   async function confirmRequest(id){
     const r = requests.find(x => x.id === id); if(!r) return alert("Demande introuvable.");
@@ -254,8 +267,11 @@
     if(taken.length) return alert(`Impossible de confirmer : ces places sont déjà réservées ailleurs : ${taken.join(", ")}`);
     const expiredText = (r.status === "expiree" || isExpired(r)) ? "\n\n⚠️ Cette demande est expirée. Si les places sont encore libres, tu peux quand même la valider." : "";
     if(!confirm(`Valider la demande de ${r.name} et envoyer l’email de confirmation ?\n\nPlaces : ${seats.join(", ")}${expiredText}`)) return;
-    const base = { reservationId:r.id, name:String(r.name||"").toUpperCase(), email:String(r.email||"").toLowerCase(), phone:r.phone||"", paid:false, nbAdult:Number(r.adultCount||0), nbChild:Number(r.childCount||0), nbBaby:Number(r.babyCount||0), amount:Number(r.amount || (Number(r.adultCount||0)*PRICE_ADULT + Number(r.childCount||0)*PRICE_CHILD)), source:"public_request", showId:SHOW_ID, createdAt:r.createdAt||new Date().toISOString() };
-    for(const s of distributeSeatTypes(r)){ await dbSet(`${SEATS_PATH}/${encodeURIComponent(s.seatId)}`, {...base, type:s.type}); }
+    const base = { reservationId:r.id, name:String(r.name||"").toUpperCase(), email:String(r.email||"").toLowerCase(), phone:r.phone||"", paid:false, nbAdult:Number(r.adultCount||0), nbChild:Number(r.childCount||0), nbBaby:Number(r.babyCount||0), nbFree:Number(r.freeCount||0), nbOctoberRose:Number(r.octoberRoseCount||0), amount:Number(r.amount || (Number(r.adultCount||0)*PRICE_ADULT + Number(r.childCount||0)*PRICE_CHILD)), source:"public_request", showId:SHOW_ID, createdAt:r.createdAt||new Date().toISOString() };
+    for(const s of distributeSeatTypes(r)){
+      const isFreeSeat = ["moins8","gratuit","octobre_rose"].includes(s.type);
+      await dbSet(`${SEATS_PATH}/${encodeURIComponent(s.seatId)}`, {...base, type:s.type, paid:isFreeSeat ? true : base.paid, free:isFreeSeat});
+    }
     for(const seatId of seats){ const h = holds[seatId]; if(h && h.requestId === id) await dbRemove(`${HOLDS_PATH}/${encodeURIComponent(seatId)}`); }
     await dbPatch(`${REQUESTS_PATH}/${id}`, {status:"confirmee", confirmedAt:new Date().toISOString(), updatedAt:new Date().toISOString()});
 
@@ -263,16 +279,17 @@
     try{
       await sendViaBrevo(
         r.email,
-        "✅ Réservation confirmée — Je préfère qu’on reste amies",
+        "✅ Réservation confirmée + votre billet — Je préfère qu’on reste amies",
         buildConfirmationEmail(r)
       );
       mailOk = true;
-      await dbPatch(`${REQUESTS_PATH}/${id}`, {confirmationEmailSentAt:new Date().toISOString()});
+      const sentAt = new Date().toISOString();
+      await dbPatch(`${REQUESTS_PATH}/${id}`, {confirmationEmailSentAt:sentAt, ticketEmailSentAt:sentAt});
     }catch(err){
       console.error("Email de confirmation non envoyé", err);
     }
 
-    alert(mailOk ? "✅ Réservation confirmée et email envoyé." : "✅ Réservation confirmée, mais l’email de confirmation n’a pas pu être envoyé. Regarde la console.");
+    alert(mailOk ? "✅ Réservation confirmée et email avec billet envoyé." : "✅ Réservation confirmée, mais l’email avec billet n’a pas pu être envoyé. Regarde la console.");
     await loadRequests();
   }
   window.confirmRequest = confirmRequest;
@@ -325,8 +342,8 @@
   setInterval(() => { if(!app.classList.contains("hidden")) loadRequests(); }, 60000);
 
   document.getElementById("exportBtn").onclick = () => {
-    const rows = [["DATE","STATUT","NOM","EMAIL","TELEPHONE","SIEGES","ADULTES","ENFANTS_9_14","MOINS_8","TOTAL","MONTANT","MESSAGE"]];
-    for(const r of requests){ rows.push([fmtDate(r.createdAt), r.status||"nouvelle", r.name||"", r.email||"", r.phone||"", (r.seats||[]).join(", "), r.adultCount||0, r.childCount||0, r.babyCount||0, r.totalPeople||0, Number(r.amount||0).toFixed(2), r.message||""]); }
+    const rows = [["DATE","STATUT","NOM","EMAIL","TELEPHONE","SIEGES","ADULTES","ENFANTS_9_14","MOINS_8","ACCOMPAGNANTS","OCTOBRE_ROSE","TOTAL","MONTANT","MESSAGE"]];
+    for(const r of requests){ rows.push([fmtDate(r.createdAt), r.status||"nouvelle", r.name||"", r.email||"", r.phone||"", (r.seats||[]).join(", "), r.adultCount||0, r.childCount||0, r.babyCount||0, r.freeCount||0, r.octoberRoseCount||0, r.totalPeople||0, Number(r.amount||0).toFixed(2), r.message||""]); }
     const csv = rows.map(row => row.map(v => `"${String(v).replace(/"/g,'""')}"`).join(";")).join("\n");
     const blob = new Blob(["\uFEFF" + csv], {type:"text/csv;charset=utf-8"}); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `demandes_places_${new Date().toISOString().slice(0,10)}.csv`; a.click();
   };
