@@ -3439,7 +3439,7 @@ function updateTable() {
   ${info.isTestReservation ? `<span style="display:inline-block;background:#bf360c;color:white;border-radius:999px;padding:2px 8px;margin-bottom:4px;font-size:.78rem;font-weight:900;">🧪 TEST</span><br>` : ""}
   ${info.isTestReservation ? "🧪" : (isPublic ? "📨" : "👤")} ${escapeHTML(name)}
   ${
-    info.free
+    (info.free && !hasOctoberRoseSeat)
       ? ""
       : `<br><span style="font-weight:600;color:${isPublic && !info.allPaid ? "#d84315" : "red"};">
         (${info.seats.length} ${isPendingPublic ? "places demandées" : "places"})
