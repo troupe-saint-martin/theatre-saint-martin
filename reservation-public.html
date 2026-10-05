@@ -214,11 +214,11 @@
           <div><label for="phone">Téléphone *</label><input id="phone" inputmode="tel" autocomplete="tel" required /></div>
           <div class="full"><label for="email">Adresse email *</label><input id="email" type="email" autocomplete="email" required /></div>
           <div class="full counts">
-            <div><label for="adultCount">Adultes <span id="publicPriceAdult" class="price-note">14 €</span></label><input id="adultCount" type="number" min="0" max="12" value="1" /></div>
-            <div><label for="childCount">Enfants 9-14 ans <span id="publicPriceChild" class="price-note">10 €</span></label><input id="childCount" type="number" min="0" max="12" value="0" /></div>
-            <div><label for="babyCount">Moins de 8 ans <span class="price-note">gratuit</span></label><input id="babyCount" type="number" min="0" max="12" value="0" /></div>
-            <div><label for="freeCount">Accompagnants — réservé aux membres de la troupe <span class="price-note">gratuit</span></label><input id="freeCount" type="number" min="0" max="12" value="0" /></div>
-            <div><label for="octoberRoseCount">🎀 Octobre Rose — invitation association <span class="price-note">gratuit</span></label><input id="octoberRoseCount" type="number" min="0" max="12" value="0" /><small style="display:block;margin-top:5px;color:#ad1457;line-height:1.3;">Pour les invitations transmises par La Bourbonnaise pour Elles / Accanthe.</small></div>
+            <div><label for="adultCount">Adultes <span id="publicPriceAdult" class="price-note">14 €</span></label><input id="adultCount" type="number" min="0" max="12" placeholder="Nombre de places" /></div>
+            <div><label for="childCount">Enfants 9-14 ans <span id="publicPriceChild" class="price-note">10 €</span></label><input id="childCount" type="number" min="0" max="12" placeholder="Nombre de places" /></div>
+            <div><label for="babyCount">Moins de 8 ans <span class="price-note">gratuit</span></label><input id="babyCount" type="number" min="0" max="12" placeholder="Nombre de places" /></div>
+            <div><label for="freeCount">Accompagnants — réservé aux membres de la troupe <span class="price-note">gratuit</span></label><input id="freeCount" type="number" min="0" max="12" placeholder="Nombre de places" /></div>
+            <div><label for="octoberRoseCount">🎀 Octobre Rose — invitation association <span class="price-note">gratuit</span></label><input id="octoberRoseCount" type="number" min="0" max="12" placeholder="Nombre de places" /><small style="display:block;margin-top:5px;color:#ad1457;line-height:1.3;">Pour les invitations transmises par La Bourbonnaise pour Elles / Accanthe.</small></div>
           </div>
           <div id="childWarning" class="full" style="
             display:none;
@@ -687,9 +687,6 @@
 
       showStatus("ok", `✅ Votre demande a bien été envoyée.<br>Places bloquées temporairement : <strong>${seats.map(escapeHTML).join(", ")}</strong><br>Référence : <strong>${requestId}</strong><br>${customerOk ? "Un email récapitulatif vient d’être envoyé." : "La demande est enregistrée, mais l’email récapitulatif n’a pas pu être envoyé automatiquement."} La troupe vous recontactera pour confirmer.${adminOk ? "" : "<br><small>Notification admin non confirmée, mais la demande apparaîtra dans la liste des réservations.</small>"}`);
       document.getElementById("reservationForm").reset();
-      document.getElementById("adultCount").value = 1;
-      document.getElementById("freeCount").value = 0;
-      document.getElementById("octoberRoseCount").value = 0;
       selected = [];
       await loadState();
       openAttendanceNotice();
@@ -701,20 +698,6 @@
     }finally{ submitBtn.disabled = false; }
   });
 
-
-  // 🎀 Facilite l'inscription association : le formulaire démarre à 1 adulte.
-  // Si la personne choisit Octobre Rose sans avoir modifié les autres catégories,
-  // on retire automatiquement cet adulte par défaut pour éviter un total incohérent.
-  document.getElementById("octoberRoseCount")?.addEventListener("input", () => {
-    const rose = parseInt(document.getElementById("octoberRoseCount")?.value || "0", 10) || 0;
-    const adultInput = document.getElementById("adultCount");
-    const child = parseInt(document.getElementById("childCount")?.value || "0", 10) || 0;
-    const baby = parseInt(document.getElementById("babyCount")?.value || "0", 10) || 0;
-    const free = parseInt(document.getElementById("freeCount")?.value || "0", 10) || 0;
-    if (rose > 0 && adultInput && Number(adultInput.value || 0) === 1 && child === 0 && baby === 0 && free === 0) {
-      adultInput.value = 0;
-    }
-  });
 
   function updateChildWarning(){
     const childCount = parseInt(document.getElementById("childCount")?.value || "0", 10) || 0;
