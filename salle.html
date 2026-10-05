@@ -1464,6 +1464,10 @@ body {
   <label for="freeCount">Accompagnants</label>
   <input id="freeCount" type="number" min="0" value="0" step="1">
 </div>
+<div class="payment-line">
+  <label for="octoberRoseCount">🎀 Octobre Rose</label>
+  <input id="octoberRoseCount" type="number" min="0" value="0" step="1">
+</div>
 
 
       <div class="payment-line">
@@ -2297,7 +2301,8 @@ window.addEventListener("DOMContentLoaded", () => {
 const nbE = parseInt(childInput.value) || 0;
 const nbB = parseInt(document.getElementById("babyCount").value) || 0;
 const nbG = parseInt(document.getElementById("freeCount")?.value || "0") || 0; // 🎟️ Gratuit
-const total = nbA * PRICE_ADULT + nbE * PRICE_CHILD; // gratuit ne compte pas en €
+const nbR = parseInt(document.getElementById("octoberRoseCount")?.value || "0") || 0; // 🎀 Octobre Rose
+const total = nbA * PRICE_ADULT + nbE * PRICE_CHILD; // gratuit et Octobre Rose ne comptent pas en €
 
 
     totalDisplay.textContent = `Total : ${total.toFixed(2)} €`;
@@ -2306,6 +2311,7 @@ adultInput.addEventListener("input", updateTotal);
 childInput.addEventListener("input", updateTotal);
 document.getElementById("babyCount").addEventListener("input", updateTotal);
 document.getElementById("freeCount").addEventListener("input", updateTotal);
+document.getElementById("octoberRoseCount").addEventListener("input", updateTotal);
 
 });
 
@@ -2320,10 +2326,11 @@ const nbAdult = parseInt(document.getElementById("adultCount").value) || 0;
 const nbChild = parseInt(document.getElementById("childCount").value) || 0;
 const nbBaby  = parseInt(document.getElementById("babyCount")?.value || "0") || 0;
 const nbFree  = parseInt(document.getElementById("freeCount")?.value || "0") || 0; // 🎟️ Gratuit
+const nbOctoberRose = parseInt(document.getElementById("octoberRoseCount")?.value || "0") || 0; // 🎀 Octobre Rose
 
 
   const totalSeats  = selected.length;                  // ✅ manquait
-const totalPeople = nbAdult + nbChild + nbBaby + nbFree;
+const totalPeople = nbAdult + nbChild + nbBaby + nbFree + nbOctoberRose;
 
 
   if (!name || !email || !phone) {
@@ -2361,6 +2368,7 @@ const user = {
   nbChild,
   nbBaby,
   nbFree,
+  nbOctoberRose,
   amount
 };
 
@@ -2371,6 +2379,7 @@ let adultRemaining = nbAdult;
 let childRemaining = nbChild;
 let babyRemaining  = nbBaby;
 let freeRemaining  = nbFree;
+let octoberRoseRemaining = nbOctoberRose;
 
 
   selected.forEach(id => {
@@ -2388,7 +2397,13 @@ let freeRemaining  = nbFree;
 } else if (freeRemaining > 0) {
   seatData.type = "gratuit";
   seatData.paid = true; // ✅ gratuit = considéré payé
+  seatData.free = true;
   freeRemaining--;
+} else if (octoberRoseRemaining > 0) {
+  seatData.type = "octobre_rose";
+  seatData.paid = true; // 🎀 invitation association = aucun règlement
+  seatData.free = true;
+  octoberRoseRemaining--;
 } else {
   seatData.type = "autre";
 }
@@ -2425,7 +2440,7 @@ document.getElementById("modal").classList.add("hidden");
 updateStatsBar();
 
 
-  alert(`✅ Réservation confirmée : ${nbAdult} adulte(s), ${nbChild} enfant(s), ${nbBaby} (-8 ans), ${nbFree} accompagnant(s) — Total ${amount} €. ${directMailOk ? "Email envoyé." : "Email non envoyé."}`);
+  alert(`✅ Réservation confirmée : ${nbAdult} adulte(s), ${nbChild} enfant(s), ${nbBaby} (-8 ans), ${nbFree} accompagnant(s), ${nbOctoberRose} Octobre Rose — Total ${amount} €. ${directMailOk ? "Email envoyé." : "Email non envoyé."}`);
 };
 
 
@@ -4251,7 +4266,7 @@ if (groupMode === "remove") {
       if (!baseData) {
         alert(`❌ Impossible d’ajouter : aucune donnée trouvée pour ${groupClient}`);
       } else {
-        let addAdult = 0, addChild = 0, addBaby = 0;
+        let addAdult = 0, addChild = 0, addBaby = 0, addOctoberRose = 0;
 
         for (const { id } of groupChanges) {
           const seatType = await askSeatType(id);
@@ -4260,13 +4275,15 @@ if (groupMode === "remove") {
 if (seatType === "adulte") addAdult++;
 else if (seatType === "enfant") addChild++;
 else if (seatType === "moins8" || seatType === "gratuit") addBaby++;
+else if (seatType === "octobre_rose") addOctoberRose++;
 
 
           seats[id] = {
             name: groupClient,
             email: baseData.email,
             phone: baseData.phone,
-            paid: baseData.paid || false,
+            paid: ["moins8", "gratuit", "octobre_rose"].includes(seatType) ? true : (baseData.paid || false),
+            free: ["moins8", "gratuit", "octobre_rose"].includes(seatType),
             nbAdult: baseData.nbAdult || 0,
             nbChild: baseData.nbChild || 0,
             nbBaby: baseData.nbBaby || 0,
@@ -4307,7 +4324,7 @@ else if (seatType === "moins8" || seatType === "gratuit") addBaby++;
           if (sendMail) await notifyClientUpdate(clientData.email);
         }
 
-        alert(`✅ Ajout terminé : ${addAdult} adulte(s), ${addChild} enfant(s), ${addBaby} -8 ans`);
+        alert(`✅ Ajout terminé : ${addAdult} adulte(s), ${addChild} enfant(s), ${addBaby} gratuit/-8 ans, ${addOctoberRose} Octobre Rose`);
       }
     }
 
@@ -6256,6 +6273,7 @@ if (mailingSendBtn) {
     <button class="type-btn" data-type="adulte" style="margin:6px;padding:10px 16px;border:none;border-radius:8px;background:#1565c0;color:white;">🧍 Adulte</button>
     <button class="type-btn" data-type="enfant" style="margin:6px;padding:10px 16px;border:none;border-radius:8px;background:#2e7d32;color:white;">🧒 Enfant</button>
     <button class="type-btn" data-type="moins8" style="margin:6px;padding:10px 16px;border:none;border-radius:8px;background:#f57c00;color:white;">🍼 Moins de 8 ans</button>
+    <button class="type-btn" data-type="octobre_rose" style="margin:6px;padding:10px 16px;border:none;border-radius:8px;background:#d81b60;color:white;">🎀 Octobre Rose</button>
   </div>
 </div>
 <!-- 🎫 Modal de choix du type de billet -->
@@ -6272,6 +6290,7 @@ if (mailingSendBtn) {
   style="background:#ff9800;color:#fff;">
   🎟️ Gratuit
 </button>
+      <button class="ticket-type-btn" data-type="octobre_rose" style="background:#d81b60;color:#fff;">🎀 Octobre Rose</button>
 
       <button id="cancelTicketType" style="background:#757575;color:#fff;">❌ Annuler</button>
     </div>
