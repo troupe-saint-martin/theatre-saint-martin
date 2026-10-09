@@ -230,8 +230,8 @@ th,td{padding:8px;border-bottom:1px solid #ddd;text-align:left}
     position:sticky;
     top:0;
     z-index:40;
-    margin:4px auto 6px;
-    padding:7px 8px;
+    margin:4px auto 12px;
+    padding:8px 9px;
     border:1px solid #bbdefb;
   }
   .compact-result #status{font-size:1rem;margin:0 0 2px}
@@ -253,6 +253,21 @@ th,td{padding:8px;border-bottom:1px solid #ddd;text-align:left}
 
   .sync-line,.compact-actions{margin:6px auto}
   .sync-line button,.compact-actions button{padding:9px 7px;font-size:.86rem}
+}
+
+/* ✅ Dernier scan validé : bloc légèrement rosé pour le repérer d’un coup d’œil */
+.compact-result.valid-ticket {
+  background:#fff7f8 !important;
+  border:2px solid #e6b8c3 !important;
+  box-shadow:0 4px 14px rgba(132,55,77,.12);
+}
+.compact-result.valid-ticket #details {
+  background:#fffdfd;
+  border:1px solid #efd4db;
+  border-radius:10px;
+}
+.compact-result.valid-ticket .big-result {
+  background:#fbecef !important;
 }
 
 /* 🎟️ Billet déjà utilisé : bloc rose pâle */
@@ -799,6 +814,14 @@ function setUsedTicketVisual(isUsed) {
   const box = document.querySelector(".compact-result");
   if (!box) return;
   box.classList.toggle("used-ticket", !!isUsed);
+  if (isUsed) box.classList.remove("valid-ticket");
+}
+
+function setValidTicketVisual(isValid) {
+  const box = document.querySelector(".compact-result");
+  if (!box) return;
+  box.classList.toggle("valid-ticket", !!isValid);
+  if (isValid) box.classList.remove("used-ticket");
 }
 
 function paymentStatusHtml(ticket = {}) {
@@ -827,6 +850,7 @@ async function onScanSuccess(text, options = {}){
     beep("err"); vibrate("err");
     statusEl.innerHTML = "<span class='err'>⛔ Billet non reconnu</span>";
     setUsedTicketVisual(false);
+    setValidTicketVisual(false);
     detailsEl.style.display = "block";
     detailsEl.innerHTML = `<div class="big-result">Ce QR code ne correspond à aucune réservation chargée.</div><strong>Données lues :</strong><br>Nom : ${escapeHTML(ticket.nom)}<br>Sièges : ${escapeHTML(ticket.sieges || "—")}`;
     if (restartCameraAfterScan) setTimeout(startScanner, 900); else setTimeout(focusHandScannerInput, 120);
@@ -836,6 +860,7 @@ async function onScanSuccess(text, options = {}){
     beep("err"); vibrate("err");
     statusEl.innerHTML = "<span class='err'>⛔ Billet déjà utilisé</span>";
     setUsedTicketVisual(true);
+    setValidTicketVisual(false);
     detailsEl.style.display = "block";
     detailsEl.innerHTML = `<div class="big-result">Déjà scanné ${current.count}/${ticket.maxScans}</div><strong>Réservation :</strong><br><b>${escapeHTML(current.nom || ticket.nom)}</b><hr><strong>🎟️ Sièges :</strong> ${escapeHTML(current.sieges || ticket.sieges)}${paymentStatusHtml(ticket)}`;
     if (restartCameraAfterScan) setTimeout(startScanner, 900); else setTimeout(focusHandScannerInput, 120);
@@ -860,6 +885,7 @@ async function onScanSuccess(text, options = {}){
   beep("ok"); vibrate("ok");
   statusEl.innerHTML = `<span class='ok'>✅ Scan ${current.count}/${ticket.maxScans}${ticket.recoveredMissingChars ? " — lecture récupérée" : ""}</span>`;
   setUsedTicketVisual(false);
+  setValidTicketVisual(true);
   detailsEl.style.display = "block";
   detailsEl.innerHTML = `<div class="big-result ok">Entrée validée</div><strong>Réservation au nom de :</strong><br><b>${escapeHTML(current.nom)}</b><hr><strong>🎟️ Sièges :</strong> ${escapeHTML(current.sieges || "—")}${paymentStatusHtml(ticket)}`;
   persistScan(ticket.ticketId);
