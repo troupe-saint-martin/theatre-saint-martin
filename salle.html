@@ -4140,6 +4140,20 @@ function updateTable() {
         </label>
       </div>
 
+      ${admin && info.isTestReservation ? `
+      <div class="group-actions admin-main-actions admin-actions-compact" data-client="${escapeHTML(name)}">
+        <button
+          class="view-ticket-btn"
+          data-name="${escapeHTML(name)}"
+          data-email="${escapeHTML(info.email || "")}"
+          data-reservation-id="${escapeHTML(reservationId || "")}"
+          data-test="true"
+          style="background:#6a1b9a;color:white;border:none;padding:8px 12px;border-radius:6px;cursor:pointer;font-weight:800;">
+          🧪 Afficher le billet test
+        </button>
+      </div>
+      ` : ""}
+
       ${admin && !info.isTestReservation ? `
       <div class="group-actions admin-main-actions admin-actions-compact" data-client="${escapeHTML(name)}">
         ${isPendingPublic ? `
@@ -4362,9 +4376,9 @@ document.addEventListener("click", async (e) => {
 // ===================================================
 // 🎟️ Génération HTML du billet (client principal)
 // ===================================================
-function generateBilletHTML(user) {
+function generateBilletHTML(user, sourceSeats = seats) {
   const reservationId = String(user.reservationId || "").trim();
-  const reservedSeats = Object.entries(seats)
+  const reservedSeats = Object.entries(sourceSeats || {})
     .filter(([_, s]) => reservationId ? s.reservationId === reservationId : s.email === user.email)
     .map(([id]) => id)
     .sort((a, b) => String(a).localeCompare(String(b), "fr", { numeric: true }))
@@ -4382,7 +4396,7 @@ function generateBilletHTML(user) {
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(qrData)}`;
   const amountValue = Number(user.amount || 0);
   const amount = amountValue.toFixed(2).replace(".", ",");
-  const octoberRoseCount = Object.entries(seats)
+  const octoberRoseCount = Object.entries(sourceSeats || {})
     .filter(([_, s]) => reservationId ? s.reservationId === reservationId : s.email === user.email)
     .filter(([_, s]) => s.type === "octobre_rose").length;
 
@@ -4449,8 +4463,10 @@ document.addEventListener("click", (e) => {
   const reservationId = String(btn.dataset.reservationId || "").trim();
   const email = String(btn.dataset.email || "").trim();
   const name = String(btn.dataset.name || "").trim();
+  const isTestTicket = btn.dataset.test === "true" || reservationId.startsWith("test_");
+  const ticketSeatsSource = isTestTicket ? (testSeats || {}) : (seats || {});
 
-  const clientSeats = Object.entries(seats).filter(([_, seat]) => {
+  const clientSeats = Object.entries(ticketSeatsSource).filter(([_, seat]) => {
     if (!seat) return false;
     if (reservationId) return String(seat.reservationId || "") === reservationId;
     if (email) return String(seat.email || "").toLowerCase() === email.toLowerCase();
@@ -4479,7 +4495,7 @@ document.addEventListener("click", (e) => {
     return;
   }
 
-  content.innerHTML = generateBilletHTML(user);
+  content.innerHTML = generateBilletHTML(user, ticketSeatsSource);
 
   // QR plus grand pour être facilement scanné depuis l'écran.
   const qr = content.querySelector('img[alt="QR Code"]');
