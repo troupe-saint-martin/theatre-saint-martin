@@ -2525,6 +2525,14 @@ document.getElementById("walkInSale").onclick = () => {
   openWalkInQuickModal();
 };
 
+// Accès express depuis le tableau de bord mobile/ordinateur.
+// Le paramètre n'est utilisé qu'une fois puis retiré de l'URL.
+const walkInFromDashboard = new URLSearchParams(window.location.search).get("vente_sur_place") === "1";
+if (walkInFromDashboard) {
+  history.replaceState(null, "", window.location.pathname + window.location.hash);
+  setTimeout(() => openWalkInQuickModal(), 0);
+}
+
 document.getElementById("walkInQuickCancel").onclick = () => {
   closeWalkInQuickModal();
 };
