@@ -286,6 +286,56 @@ th,td{padding:8px;border-bottom:1px solid #ddd;text-align:left}
 }
 
 
+
+/* === Retour visuel instantané après chaque scan === */
+.scan-feedback{
+  position:fixed;
+  left:50%;
+  top:18%;
+  transform:translate(-50%,-8px) scale(.97);
+  z-index:9999;
+  width:min(88vw,520px);
+  box-sizing:border-box;
+  padding:18px 20px;
+  border-radius:16px;
+  border:2px solid transparent;
+  box-shadow:0 10px 30px rgba(0,0,0,.20);
+  text-align:center;
+  font-size:clamp(1.25rem,5vw,2rem);
+  font-weight:950;
+  line-height:1.15;
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .12s ease,transform .12s ease;
+}
+.scan-feedback.show{
+  opacity:1;
+  transform:translate(-50%,0) scale(1);
+}
+.scan-feedback.ok{
+  background:#e8f5e9;
+  color:#1b5e20;
+  border-color:#81c784;
+}
+.scan-feedback.used{
+  background:#fdecef;
+  color:#9b1c31;
+  border-color:#e7a6b2;
+}
+.scan-feedback.err{
+  background:#fff1f0;
+  color:#b3261e;
+  border-color:#ef9a9a;
+}
+@media(max-width:600px){
+  .scan-feedback{
+    top:15%;
+    width:92vw;
+    padding:16px 14px;
+    border-radius:14px;
+  }
+}
+
 /* === Recherche rapide spectateur sans billet === */
 .spectator-search-box{
   max-width:520px;
@@ -359,6 +409,8 @@ th,td{padding:8px;border-bottom:1px solid #ddd;text-align:left}
 <body>
 <h1>🎭 Scanner billets</h1>
 
+<div id="scanFeedback" class="scan-feedback" aria-live="assertive"></div>
+
 <div class="compact-result">
   <p id="status">Chargement des données…</p>
   <p id="counter">Billets scannés : 0</p>
@@ -431,6 +483,7 @@ let ticketBySeats = {};  // Accès rapide par sièges
 const statusEl = document.getElementById("status");
 const counterEl = document.getElementById("counter");
 const detailsEl = document.getElementById("details");
+const scanFeedbackEl = document.getElementById("scanFeedback");
 const syncInfoEl = document.getElementById("syncInfo");
 const handScannerInput = document.getElementById("handScannerInput");
 const handScannerModeBtn = document.getElementById("handScannerModeBtn");
@@ -835,6 +888,21 @@ async function persistScan(ticketId) {
 }
 
 
+
+let scanFeedbackTimer = null;
+function showScanFeedback(type, text) {
+  if (!scanFeedbackEl) return;
+  clearTimeout(scanFeedbackTimer);
+  scanFeedbackEl.className = `scan-feedback ${type}`;
+  scanFeedbackEl.textContent = text;
+  // Force le navigateur à repartir de l'état masqué pour que chaque scan soit visible.
+  void scanFeedbackEl.offsetWidth;
+  scanFeedbackEl.classList.add("show");
+  scanFeedbackTimer = setTimeout(() => {
+    scanFeedbackEl.classList.remove("show");
+  }, 950);
+}
+
 function setUsedTicketVisual(isUsed) {
   const box = document.querySelector(".compact-result");
   if (!box) return;
@@ -874,6 +942,7 @@ async function onScanSuccess(text, options = {}){
   if (!ticket.isKnownTicket) {
     beep("err"); vibrate("err");
     statusEl.innerHTML = "<span class='err'>⛔ Billet non reconnu</span>";
+    showScanFeedback("err", "❌ BILLET NON RECONNU");
     setUsedTicketVisual(false);
     setValidTicketVisual(false);
     detailsEl.style.display = "block";
@@ -884,6 +953,7 @@ async function onScanSuccess(text, options = {}){
   if (Number(current.count || 0) >= ticket.maxScans) {
     beep("err"); vibrate("err");
     statusEl.innerHTML = "<span class='err'>⛔ Billet déjà utilisé</span>";
+    showScanFeedback("used", `⛔ DÉJÀ SCANNÉ — ${current.count}/${ticket.maxScans}`);
     setUsedTicketVisual(true);
     setValidTicketVisual(false);
     detailsEl.style.display = "block";
@@ -909,6 +979,7 @@ async function onScanSuccess(text, options = {}){
   renderHistory(); updateCounter();
   beep("ok"); vibrate("ok");
   statusEl.innerHTML = `<span class='ok'>✅ Scan ${current.count}/${ticket.maxScans}${ticket.recoveredMissingChars ? " — lecture récupérée" : ""}</span>`;
+  showScanFeedback("ok", `✅ SCAN VALIDÉ — ${current.count}/${ticket.maxScans}`);
   setUsedTicketVisual(false);
   setValidTicketVisual(true);
   detailsEl.style.display = "block";
