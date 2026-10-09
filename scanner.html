@@ -219,14 +219,40 @@ th,td{padding:8px;border-bottom:1px solid #ddd;text-align:left}
   display:none;
 }
 
-@media(max-width:480px){
-  body{padding:6px}
-  h1{font-size:1.35rem}
-  #reader{width:100%;max-width:330px}
-  .panel{padding:10px}
-  th,td{font-size:.9rem}
-  .handscanner-box{padding:9px}
-  .big-result{font-size:1.05rem}
+@media(max-width:600px){
+  body{padding:4px}
+  h1{font-size:1.2rem;margin:4px 0}
+  #reader{width:100%;max-width:330px;margin:6px auto}
+  .panel{padding:8px}
+  th,td{font-size:.88rem}
+
+  .compact-result{
+    position:sticky;
+    top:0;
+    z-index:40;
+    margin:4px auto 6px;
+    padding:7px 8px;
+    border:1px solid #bbdefb;
+  }
+  .compact-result #status{font-size:1rem;margin:0 0 2px}
+  .compact-result #counter{font-size:.9rem;margin:0}
+  .compact-result #syncInfo{display:none}
+  #details{margin-top:5px;padding:7px;font-size:.9rem}
+  .big-result{font-size:.98rem;padding:6px;margin:2px 0 4px}
+
+  .handscanner-box{position:static;margin:4px auto 6px;padding:7px}
+  .handscanner-title{font-size:1rem;margin-bottom:4px}
+  #handScannerInput{padding:10px;font-size:.95rem}
+  .handscanner-actions{gap:4px;margin-top:5px}
+  .handscanner-actions button{padding:9px 6px;font-size:.84rem}
+
+  .spectator-search-box{margin:6px auto;padding:8px}
+  .spectator-search-box input{padding:10px 11px;font-size:15px}
+  #spectatorSearchResults{margin-top:6px;max-height:220px}
+  .spectator-ticket-card{margin-top:6px;padding:8px}
+
+  .sync-line,.compact-actions{margin:6px auto}
+  .sync-line button,.compact-actions button{padding:9px 7px;font-size:.86rem}
 }
 
 /* 🎟️ Billet déjà utilisé : bloc rose pâle */
@@ -317,7 +343,13 @@ th,td{padding:8px;border-bottom:1px solid #ddd;text-align:left}
 
 <body>
 <h1>🎭 Scanner billets</h1>
-<p>Mode douchette rapide — résultat juste dessous.</p>
+
+<div class="compact-result">
+  <p id="status">Chargement des données…</p>
+  <p id="counter">Billets scannés : 0</p>
+  <p id="syncInfo">Synchronisation en attente…</p>
+  <div id="details" style="display:none;"></div>
+</div>
 
 <div id="reader" class="camera-only"></div>
 
@@ -329,7 +361,6 @@ th,td{padding:8px;border-bottom:1px solid #ddd;text-align:left}
     <button id="cameraModeBtn" class="green" type="button">📷 Mode caméra</button>
     <button id="manualScanBtn" class="blue" type="button">✅ Valider le code</button>
   </div>
-  <p class="small">Avec la douchette, clique dans le champ puis scanne. Si elle ajoute Entrée automatiquement, la validation se fait toute seule.</p>
 </div>
 
 <div class="spectator-search-box">
@@ -337,16 +368,8 @@ th,td{padding:8px;border-bottom:1px solid #ddd;text-align:left}
   <input id="spectatorSearch" type="search" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Tape le nom (ex. DUPONT)" />
   <div id="spectatorSearchResults"></div>
   <div id="spectatorTicketCard" class="spectator-ticket-card"></div>
-  <p class="small" style="margin-bottom:0;">Tape quelques lettres du nom, choisis la bonne personne, puis valide directement son entrée sans quitter cette page.</p>
 </div>
 
-
-<div class="compact-result">
-  <p id="status">Chargement des données…</p>
-  <p id="counter">Billets scannés : 0</p>
-  <p id="syncInfo">Synchronisation en attente…</p>
-  <div id="details" style="display:none;"></div>
-</div>
 
 <div class="sync-line">
   <button id="syncBtn" class="blue">🔄 Synchroniser avant ouverture</button>
