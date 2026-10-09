@@ -363,8 +363,9 @@ h1 {
 
      
       <div class="actions">
-        <button>🎟️ Achat tickets</button>
-        <button>🔍 Scanner billet</button>
+        <button id="quickWalkIn" type="button" style="background:linear-gradient(180deg,#2e7d32,#1b5e20);">💶 Vente sur place</button>
+        <button id="buyTickets" type="button">🎟️ Achat tickets</button>
+        <button id="scanTicket" type="button">🔍 Scanner billet</button>
       </div>
       <!-- Nouveau bouton Accueil -->
 <div style="text-align:center; margin-top:15px;">
@@ -452,8 +453,9 @@ if (seat.paid === true) {
 
 
 
-    document.querySelector("button:nth-of-type(1)").onclick = () => window.location.href = "salle.html";
-    document.querySelector("button:nth-of-type(2)").onclick = () => window.location.href = "scanner.html";
+    document.getElementById("quickWalkIn").onclick = () => window.location.href = "salle.html?vente_sur_place=1";
+    document.getElementById("buyTickets").onclick = () => window.location.href = "salle.html";
+    document.getElementById("scanTicket").onclick = () => window.location.href = "scanner.html";
   </script>
 </body>
 </html>
