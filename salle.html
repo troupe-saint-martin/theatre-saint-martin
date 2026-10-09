@@ -19,7 +19,7 @@
 <!-- ✅ Firebase -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-  import { getDatabase, ref, set, onValue, get } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js";
+  import { getDatabase, ref, set, onValue, get, runTransaction } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyXXXX_TON_API_KEY",
@@ -39,6 +39,7 @@
   window._firebaseSet = set;
   window._firebaseOnValue = onValue;
   window._firebaseGet = get;
+  window._firebaseRunTransaction = runTransaction;
 
   console.log("🔥 Firebase initialisé :", db);
 </script>
@@ -1498,6 +1499,36 @@ body {
   </div>
 </div>
 
+<!-- 💶 Vente sur place rapide : attribution automatique des sièges -->
+<div id="walkInQuickModal" class="modal hidden">
+  <div class="modal-content" style="width:min(390px,92vw);max-width:390px;">
+    <h3 style="margin-top:0;">💶 Vente sur place</h3>
+    <p style="margin:0 0 14px;line-height:1.4;color:#555;">
+      Les places sont attribuées automatiquement <strong>côte à côte</strong>,
+      en commençant par la <strong>rangée L</strong>, puis M, N…
+    </p>
+
+    <div class="payment-group" style="width:auto;">
+      <div class="payment-line">
+        <label for="walkInAdultCount">Adultes</label>
+        <select id="walkInAdultCount" style="min-width:110px;padding:9px;border:1px solid #bbb;border-radius:6px;font-size:16px;"></select>
+      </div>
+      <div class="payment-line">
+        <label for="walkInChildCount">Enfants 9–14 ans</label>
+        <select id="walkInChildCount" style="min-width:110px;padding:9px;border:1px solid #bbb;border-radius:6px;font-size:16px;"></select>
+      </div>
+      <p id="walkInQuickSummary" style="margin:12px 0 0;font-weight:800;text-align:center;color:#2e7d32;">
+        0 place — 0 €
+      </p>
+    </div>
+
+    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+      <button id="walkInQuickSave" type="button" style="background:#2e7d32;">✅ Attribuer les places</button>
+      <button id="walkInQuickCancel" type="button" style="background:#757575;">Annuler</button>
+    </div>
+  </div>
+</div>
+
 
 
 <script type="module">
@@ -1608,6 +1639,7 @@ const ref = window._firebaseRef;
 const set = window._firebaseSet;
 const onValue = window._firebaseOnValue;
 const get = window._firebaseGet;
+const runTransaction = window._firebaseRunTransaction;
 
 // === TARIFS PARTAGÉS AVEC LA PAGE PUBLIQUE ===
 // Les tarifs sont sauvegardés dans Firebase pour que reservation-public.html les affiche aussi.
@@ -2309,11 +2341,266 @@ document.getElementById("confirm").onclick = () => {
   document.getElementById("modal").classList.remove("hidden");
 };
 
+// ===================================================
+// 💶 VENTE SUR PLACE RAPIDE — attribution automatique
+//    Zone prioritaire : rangées L à S
+// ===================================================
+const WALK_IN_START_ROW = "L";
+const WALK_IN_AUTO_ROWS = rows.slice(Math.max(0, rows.indexOf(WALK_IN_START_ROW)));
+
+function fillWalkInCountSelect(selectEl, max = 16) {
+  if (!selectEl || selectEl.options.length) return;
+  for (let i = 0; i <= max; i++) {
+    const option = document.createElement("option");
+    option.value = String(i);
+    option.textContent = String(i);
+    selectEl.appendChild(option);
+  }
+}
+
+function isWalkInSeatAvailable(id, currentSeats = seats) {
+  return !currentSeats?.[id]
+    && !testSeats?.[id]
+    && !isActivePublicHold(publicHolds?.[id]);
+}
+
+function getBestContiguousWalkInSeats(count, currentSeats = seats) {
+  if (!Number.isInteger(count) || count <= 0 || count > seatNums.length) return null;
+
+  const center = (seatNums.length - 1) / 2;
+
+  for (const rowLetter of WALK_IN_AUTO_ROWS) {
+    let best = null;
+    let bestScore = Infinity;
+
+    for (let start = 0; start <= seatNums.length - count; start++) {
+      const blockNums = seatNums.slice(start, start + count);
+      const ids = blockNums.map(n => `${rowLetter}-${n}`);
+      if (!ids.every(id => isWalkInSeatAvailable(id, currentSeats))) continue;
+
+      // À rangée égale, on privilégie le bloc le plus centré.
+      const blockCenter = start + (count - 1) / 2;
+      const score = Math.abs(blockCenter - center);
+      if (score < bestScore) {
+        best = ids;
+        bestScore = score;
+      }
+    }
+
+    // Toujours terminer la meilleure rangée disponible avant de passer à la suivante.
+    if (best) return best;
+  }
+
+  return null;
+}
+
+function getWalkInScatteredSeatIds(currentSeats = seats) {
+  const result = [];
+
+  // D'abord les fauteuils classiques, rangée par rangée, du centre vers les côtés.
+  for (const rowLetter of WALK_IN_AUTO_ROWS) {
+    const regular = seatNums
+      .map(n => ({ id: `${rowLetter}-${n}`, n }))
+      .filter(item => isWalkInSeatAvailable(item.id, currentSeats))
+      .sort((a, b) => a.n - b.n); // 1,2 puis 3,4... = du centre vers l'extérieur
+    result.push(...regular.map(item => item.id));
+  }
+
+  // Les strapontins ne sont utilisés qu'en dernier recours.
+  for (const rowLetter of WALK_IN_AUTO_ROWS) {
+    for (const id of [`${rowLetter}-S15`, `${rowLetter}-S16`]) {
+      if (isWalkInSeatAvailable(id, currentSeats)) result.push(id);
+    }
+  }
+
+  return result;
+}
+
+function updateWalkInQuickSummary() {
+  const adults = parseInt(document.getElementById("walkInAdultCount")?.value || "0", 10) || 0;
+  const children = parseInt(document.getElementById("walkInChildCount")?.value || "0", 10) || 0;
+  const total = adults + children;
+  const amount = adults * PRICE_ADULT + children * PRICE_CHILD;
+  const label = document.getElementById("walkInQuickSummary");
+  if (label) label.textContent = `${total} place${total > 1 ? "s" : ""} — ${amount.toFixed(2)} €`;
+}
+
+function openWalkInQuickModal() {
+  // La vente rapide ne dépend plus d'une sélection manuelle sur le plan.
+  selected = [];
+  render();
+
+  const adultSelect = document.getElementById("walkInAdultCount");
+  const childSelect = document.getElementById("walkInChildCount");
+  fillWalkInCountSelect(adultSelect);
+  fillWalkInCountSelect(childSelect);
+  adultSelect.value = "0";
+  childSelect.value = "0";
+  updateWalkInQuickSummary();
+  document.getElementById("walkInQuickModal").classList.remove("hidden");
+}
+
+function closeWalkInQuickModal() {
+  document.getElementById("walkInQuickModal").classList.add("hidden");
+}
+
+async function refreshWalkInAvailability() {
+  const [seatSnapshot, holdSnapshot] = await Promise.all([
+    get(seatsRef),
+    get(publicHoldsRef)
+  ]);
+
+  seats = seatSnapshot.val() || {};
+  window.seats = seats;
+  publicHolds = holdSnapshot.val() || {};
+  render();
+  updateTable();
+  updateStatsBar();
+}
+
+async function commitAutomaticWalkInSale(nbAdult, nbChild, allowScattered) {
+  if (typeof runTransaction !== "function") {
+    throw new Error("Transaction Firebase indisponible.");
+  }
+
+  const totalPeople = nbAdult + nbChild;
+  const amount = nbAdult * PRICE_ADULT + nbChild * PRICE_CHILD;
+  const reservationId = crypto.randomUUID();
+
+  const result = await runTransaction(seatsRef, currentValue => {
+    const currentSeats = currentValue || {};
+
+    let assigned = getBestContiguousWalkInSeats(totalPeople, currentSeats);
+    if (!assigned && allowScattered) {
+      assigned = getWalkInScatteredSeatIds(currentSeats).slice(0, totalPeople);
+      if (assigned.length !== totalPeople) assigned = null;
+    }
+
+    // En cas de changement simultané sur un autre appareil, on n'écrase rien.
+    if (!assigned) return;
+
+    const nextSeats = { ...currentSeats };
+    assigned.forEach((id, index) => {
+      nextSeats[id] = {
+        reservationId,
+        name: "VENTE SUR PLACE",
+        email: "",
+        phone: "",
+        paid: true,
+        free: false,
+        source: "vente_sur_place",
+        nbAdult,
+        nbChild,
+        nbBaby: 0,
+        nbFree: 0,
+        nbOctoberRose: 0,
+        amount,
+        type: index < nbAdult ? "adulte" : "enfant"
+      };
+    });
+
+    return nextSeats;
+  }, { applyLocally: false });
+
+  if (!result.committed) return null;
+
+  const finalSeats = result.snapshot.val() || {};
+  const assignedIds = Object.entries(finalSeats)
+    .filter(([_, data]) => data?.reservationId === reservationId)
+    .map(([id]) => id);
+
+  seats = finalSeats;
+  window.seats = seats;
+  render();
+  updateTable();
+  updateStatsBar();
+
+  return { reservationId, assignedIds, amount };
+}
+
+document.getElementById("walkInAdultCount").addEventListener("change", updateWalkInQuickSummary);
+document.getElementById("walkInChildCount").addEventListener("change", updateWalkInQuickSummary);
+
 document.getElementById("walkInSale").onclick = () => {
-  if (!selected.length) return alert("Sélectionne d’abord le ou les sièges vendus sur place.");
-  setWalkInSaleMode(true);
-  resetReservationCounts();
-  document.getElementById("modal").classList.remove("hidden");
+  openWalkInQuickModal();
+};
+
+document.getElementById("walkInQuickCancel").onclick = () => {
+  closeWalkInQuickModal();
+};
+
+document.getElementById("walkInQuickSave").onclick = async () => {
+  const saveBtn = document.getElementById("walkInQuickSave");
+  const nbAdult = parseInt(document.getElementById("walkInAdultCount").value || "0", 10) || 0;
+  const nbChild = parseInt(document.getElementById("walkInChildCount").value || "0", 10) || 0;
+  const totalPeople = nbAdult + nbChild;
+
+  if (totalPeople <= 0) {
+    alert("Indique au moins 1 adulte ou 1 enfant.");
+    return;
+  }
+
+  saveBtn.disabled = true;
+  saveBtn.textContent = "Attribution…";
+
+  try {
+    // On relit la salle juste avant de chercher les places, utile si plusieurs appareils sont ouverts.
+    await refreshWalkInAvailability();
+
+    let contiguous = getBestContiguousWalkInSeats(totalPeople, seats);
+    let availableIds = getWalkInScatteredSeatIds(seats);
+
+    if (availableIds.length < totalPeople) {
+      alert(`⚠️ Il ne reste plus que ${availableIds.length} place${availableIds.length > 1 ? "s" : ""} disponible${availableIds.length > 1 ? "s" : ""} dans la zone de vente sur place (rangées L à S), alors que ${totalPeople} places ont été demandées.\n\nAucune vente n'a été enregistrée.`);
+      return;
+    }
+
+    let allowScattered = false;
+
+    if (!contiguous) {
+      const ok = confirm(`⚠️ Il n'y a plus ${totalPeople} places côte à côte disponibles.\n\nIl reste suffisamment de places, mais elles seront séparées. Voulez-vous continuer avec des places dispatchées ?`);
+      if (!ok) {
+        closeWalkInQuickModal();
+        return;
+      }
+      allowScattered = true;
+    }
+
+    // Après la réponse de l'utilisateur, on actualise encore une fois avant l'enregistrement.
+    await refreshWalkInAvailability();
+    contiguous = getBestContiguousWalkInSeats(totalPeople, seats);
+    availableIds = getWalkInScatteredSeatIds(seats);
+
+    if (availableIds.length < totalPeople) {
+      alert(`⚠️ La disponibilité vient de changer. Il ne reste plus que ${availableIds.length} place${availableIds.length > 1 ? "s" : ""} dans les rangées L à S.\n\nAucune vente n'a été enregistrée.`);
+      return;
+    }
+
+    if (!contiguous && !allowScattered) {
+      const ok = confirm(`⚠️ La disponibilité vient de changer : il n'y a plus ${totalPeople} places côte à côte.\n\nVoulez-vous accepter des places séparées ?`);
+      if (!ok) {
+        closeWalkInQuickModal();
+        return;
+      }
+      allowScattered = true;
+    }
+
+    const result = await commitAutomaticWalkInSale(nbAdult, nbChild, allowScattered);
+    if (!result) {
+      alert("⚠️ Les places viennent d'être modifiées sur un autre appareil. Rien n'a été enregistré. Réessayez simplement la vente sur place.");
+      return;
+    }
+
+    closeWalkInQuickModal();
+    const seatText = result.assignedIds.join(", ");
+    alert(`✅ Vente sur place enregistrée et encaissée.\n\n${totalPeople} place${totalPeople > 1 ? "s" : ""} : ${seatText}\nTotal : ${result.amount.toFixed(2)} €`);
+  } catch (err) {
+    console.error("Erreur vente sur place automatique", err);
+    alert("❌ Impossible d'enregistrer la vente sur place. Rien n'a été modifié. Réessayez.");
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = "✅ Attribuer les places";
+  }
 };
 
 document.getElementById("close").onclick = () => {
