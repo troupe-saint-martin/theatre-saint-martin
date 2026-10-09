@@ -769,6 +769,59 @@ button:active {
 .accordion-header.public-request-line:hover {
   background: #ffcc80 !important;
 }
+
+/* === Repère visuel : vente sur place === */
+.accordion-header.walk-in-sale-line {
+  background: #d1b3e6 !important;
+  color: #21112c !important;
+  border-left: 6px solid #7b1fa2 !important;
+  text-align: left;
+}
+.accordion-header.walk-in-sale-line:hover {
+  background: #c39add !important;
+}
+
+/* === Regroupement alphabétique de la liste des réservations === */
+.reservation-letter-group {
+  margin: 10px 0 14px;
+  border: 1px solid #d9d9d9;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+.reservation-letter-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 14px;
+  background: #f1f3f5;
+  color: #202124;
+  border: 0;
+  border-radius: 0;
+  font-size: 1rem;
+  font-weight: 800;
+  cursor: pointer;
+  text-align: left;
+}
+.reservation-letter-header:hover {
+  background: #e4e7eb;
+}
+.reservation-letter-content {
+  display: none;
+  padding: 4px 10px 10px;
+}
+.reservation-letter-group.open > .reservation-letter-content {
+  display: block;
+}
+.reservation-letter-group.walk-in-group > .reservation-letter-header {
+  background: #efe2f7;
+  color: #4a145e;
+}
+.reservation-letter-group.walk-in-group > .reservation-letter-header:hover {
+  background: #e3ccef;
+}
 .accordion-header.paid {
   border-left: 6px solid #49a760;
 	text-align: left;
@@ -3695,6 +3748,7 @@ function updateTable() {
         isPublicRequest: data.source === "public_request",
         isPublicRequestPending: false,
         isTestReservation: isTestReservationData(data),
+        isWalkInSale: data.source === "vente_sur_place" || String(data.name || "").toUpperCase() === "VENTE SUR PLACE",
         seats: [],
         emails: new Set(),
         allPaid: true
@@ -3736,6 +3790,7 @@ function updateTable() {
       publicRequest: r,
       isPublicRequest: true,
       isPublicRequestPending: true,
+      isWalkInSale: false,
       source: "public_request",
       amount: Number(r.amount || 0),
       nbAdult: Number(r.adultCount || 0),
@@ -3754,10 +3809,53 @@ function updateTable() {
   }
 
   const sorted = Object.entries(grouped).sort(([, a], [, b]) => {
-    if (a.isPublicRequestPending && !b.isPublicRequestPending) return -1;
-    if (!a.isPublicRequestPending && b.isPublicRequestPending) return 1;
-    return (a.name || "").localeCompare(b.name || "", "fr", { sensitivity: "base" });
+    const aWalkIn = !!a.isWalkInSale;
+    const bWalkIn = !!b.isWalkInSale;
+    if (aWalkIn && !bWalkIn) return 1;
+    if (!aWalkIn && bWalkIn) return -1;
+
+    const nameCompare = (a.name || "").localeCompare(b.name || "", "fr", { sensitivity: "base" });
+    if (nameCompare !== 0) return nameCompare;
+    return String(a.reservationId || "").localeCompare(String(b.reservationId || ""), "fr", { numeric: true });
   });
+
+  const reservationSections = new Map();
+
+  function getReservationSectionBody(info) {
+    const isWalkIn = !!info.isWalkInSale;
+    let key = "#";
+    let label = "#";
+
+    if (isWalkIn) {
+      key = "__WALKIN__";
+      label = "💶 VENTES SUR PLACE";
+    } else {
+      const rawName = String(info.name || "").trim();
+      const normalized = rawName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+      const first = normalized.charAt(0);
+      key = /^[A-Z]$/.test(first) ? first : "#";
+      label = key;
+    }
+
+    if (reservationSections.has(key)) return reservationSections.get(key);
+
+    const group = document.createElement("div");
+    group.className = `reservation-letter-group${isWalkIn ? " walk-in-group" : ""}`;
+
+    const groupHeader = document.createElement("button");
+    groupHeader.type = "button";
+    groupHeader.className = "reservation-letter-header";
+    groupHeader.innerHTML = `<span>${escapeHTML(label)}</span><span aria-hidden="true">▾</span>`;
+    groupHeader.addEventListener("click", () => group.classList.toggle("open"));
+
+    const groupBody = document.createElement("div");
+    groupBody.className = "reservation-letter-content";
+
+    group.append(groupHeader, groupBody);
+    container.append(group);
+    reservationSections.set(key, groupBody);
+    return groupBody;
+  }
 
   for (const [nameKey, info] of sorted) {
     const name = info.name || nameKey || "Inconnu";
@@ -3776,7 +3874,9 @@ function updateTable() {
 
     const header = document.createElement("div");
     header.className = `accordion-header ${
-      info.free ? "free-line" : (info.allPaid ? "paid" : (isPublic ? "public-request-line" : "unpaid"))
+      info.isWalkInSale
+        ? "walk-in-sale-line"
+        : (info.free ? "free-line" : (info.allPaid ? "paid" : (isPublic ? "public-request-line" : "unpaid")))
     }`;
 
     const hasFreeSeat = info.seats.some(s => s.type === "gratuit");
@@ -4050,7 +4150,7 @@ function updateTable() {
 `;
 
     div.append(header, content);
-    container.append(div);
+    getReservationSectionBody(info).append(div);
   }
 
   document.querySelectorAll(".paid-toggle-client").forEach(cb => {
