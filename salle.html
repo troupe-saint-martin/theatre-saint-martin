@@ -1352,6 +1352,7 @@ body {
 <button id="sidebarToggle" class="sidebar-toggle" type="button">☰ Menu</button>
 <div class="buttons">
   <button id="confirm">✅ Confirmer</button>
+  <button id="walkInSale" type="button" style="background:#2e7d32;">💶 Vente sur place</button>
   <button id="admin">🔐 Admin</button>
 	<button id="openPublicReservation" type="button" style="background:#cf683d;">
   🎟️ Page réservation public
@@ -1445,14 +1446,14 @@ body {
 <!-- 🧾 Fenêtre modale de réservation -->
 <div id="modal" class="modal hidden">
   <div class="modal-content">
-    <h3>Informations de réservation</h3>
+    <h3 id="reservationModalTitle">Informations de réservation</h3>
 
     <input id="name" placeholder="Nom complet">
     <input id="email" placeholder="Adresse email">
     <input id="phone" placeholder="Téléphone">
 
     <div class="payment-group">
-      <div class="payment-line">
+      <div class="payment-line" id="paymentReceivedLine">
         <span>Si paiement reçu, coche la case</span>
         <input type="checkbox" id="paid">
       </div>
@@ -2261,11 +2262,64 @@ if (!seats[id]) {
 
 
 /* === Ouvre/ferme la modale === */
+let walkInSaleMode = false;
+
+function resetReservationCounts() {
+  ["adultCount", "childCount", "babyCount", "freeCount", "octoberRoseCount"].forEach(id => {
+    const input = document.getElementById(id);
+    if (input) input.value = "0";
+  });
+  const totalDisplay = document.getElementById("total-display");
+  if (totalDisplay) totalDisplay.textContent = "Total : 0.00 €";
+}
+
+function setWalkInSaleMode(enabled) {
+  walkInSaleMode = !!enabled;
+  const title = document.getElementById("reservationModalTitle");
+  const nameInput = document.getElementById("name");
+  const emailInput = document.getElementById("email");
+  const phoneInput = document.getElementById("phone");
+  const paymentLine = document.getElementById("paymentReceivedLine");
+  const paidInput = document.getElementById("paid");
+
+  if (title) title.textContent = walkInSaleMode
+    ? "💶 Vente sur place — paiement encaissé"
+    : "Informations de réservation";
+
+  [nameInput, emailInput, phoneInput].forEach(input => {
+    if (input) input.style.display = walkInSaleMode ? "none" : "";
+  });
+  if (paymentLine) paymentLine.style.display = walkInSaleMode ? "none" : "";
+
+  if (walkInSaleMode) {
+    nameInput.value = "VENTE SUR PLACE";
+    emailInput.value = "";
+    phoneInput.value = "";
+    paidInput.checked = true;
+  } else {
+    if (nameInput.value === "VENTE SUR PLACE") nameInput.value = "";
+    paidInput.checked = false;
+  }
+}
+
 document.getElementById("confirm").onclick = () => {
   if (!selected.length) return alert("Aucun siège sélectionné !");
+  setWalkInSaleMode(false);
+  resetReservationCounts();
   document.getElementById("modal").classList.remove("hidden");
 };
-document.getElementById("close").onclick = () => document.getElementById("modal").classList.add("hidden");
+
+document.getElementById("walkInSale").onclick = () => {
+  if (!selected.length) return alert("Sélectionne d’abord le ou les sièges vendus sur place.");
+  setWalkInSaleMode(true);
+  resetReservationCounts();
+  document.getElementById("modal").classList.remove("hidden");
+};
+
+document.getElementById("close").onclick = () => {
+  document.getElementById("modal").classList.add("hidden");
+  setWalkInSaleMode(false);
+};
 
 /* === Formatage nom/email/téléphone === */
 function isValidEmail(email) {
@@ -2320,7 +2374,7 @@ document.getElementById("save").onclick = async () => {
   const name   = document.getElementById("name").value.trim().toUpperCase();
   const email  = document.getElementById("email").value.trim().toLowerCase();
   const phone  = formatPhone(document.getElementById("phone").value.trim());
-  const paid   = document.getElementById("paid").checked;
+  const paid   = walkInSaleMode ? true : document.getElementById("paid").checked;
 
 const nbAdult = parseInt(document.getElementById("adultCount").value) || 0;
 const nbChild = parseInt(document.getElementById("childCount").value) || 0;
@@ -2333,12 +2387,12 @@ const nbOctoberRose = parseInt(document.getElementById("octoberRoseCount")?.valu
 const totalPeople = nbAdult + nbChild + nbBaby + nbFree + nbOctoberRose;
 
 
-  if (!name || !email || !phone) {
+  if (!walkInSaleMode && (!name || !email || !phone)) {
     alert("Tous les champs sont requis.");
     return;
   }
 
-  if (!isValidEmail(email)) {
+  if (!walkInSaleMode && !isValidEmail(email)) {
     alert("❌ Adresse email invalide. Vérifie qu’il n’y a pas d’espace, d’accent ou de point manquant.");
     return;
   }
@@ -2359,11 +2413,12 @@ window.lastReservationId = reservationId;
 
 const user = { 
   reservationId,
-  name,
-  email,
-  phone,
-  paid: isFree ? true : paid, // ✅ gratuit = payé
+  name: walkInSaleMode ? "VENTE SUR PLACE" : name,
+  email: walkInSaleMode ? "" : email,
+  phone: walkInSaleMode ? "" : phone,
+  paid: walkInSaleMode ? true : (isFree ? true : paid), // 💶 vente sur place = encaissée immédiatement
   free: isFree,               // 🆕 flag gratuit
+  ...(walkInSaleMode ? { source: "vente_sur_place" } : {}),
   nbAdult,
   nbChild,
   nbBaby,
@@ -2414,33 +2469,41 @@ let octoberRoseRemaining = nbOctoberRose;
 
   await save();
 
-// 📇 Sauvegarde automatique du contact pour les futurs mailings, même après réinitialisation
-try {
-  await saveMailingContact(user.email, user.name, "ISLEA réservation", { phone: user.phone });
-} catch (err) {
-  console.warn("Contact mailing non sauvegardé", err);
+const wasWalkInSale = walkInSaleMode;
+
+// 📇 Pas de coordonnées ni de mailing pour une vente faite directement à l’entrée.
+if (!wasWalkInSale) {
+  try {
+    await saveMailingContact(user.email, user.name, "ISLEA réservation", { phone: user.phone });
+  } catch (err) {
+    console.warn("Contact mailing non sauvegardé", err);
+  }
 }
 
-// 📧 Envoi automatique de l’email de réservation depuis la salle
+// 📧 Pas d’email ni de QR code pour une personne déjà présente sur place.
 let directMailOk = false;
-try {
-  await sendEmail(user);
-  directMailOk = true;
+if (!wasWalkInSale) {
+  try {
+    await sendEmail(user);
+    directMailOk = true;
 
-  // Le billet avec QR code est désormais inclus directement dans l’email de confirmation,
-  // même si le règlement n’est pas encore enregistré. Aucun deuxième email n’est envoyé ici.
-} catch (err) {
-  console.error("❌ Email de réservation non envoyé", err);
+    // Le billet avec QR code est désormais inclus directement dans l’email de confirmation,
+    // même si le règlement n’est pas encore enregistré. Aucun deuxième email n’est envoyé ici.
+  } catch (err) {
+    console.error("❌ Email de réservation non envoyé", err);
+  }
 }
-
-
 
 selected = [];
 document.getElementById("modal").classList.add("hidden");
+setWalkInSaleMode(false);
 updateStatsBar();
 
-
+if (wasWalkInSale) {
+  alert(`✅ Vente sur place enregistrée et encaissée : ${nbAdult} adulte(s), ${nbChild} enfant(s), ${nbBaby} (-8 ans), ${nbFree} accompagnant(s), ${nbOctoberRose} Octobre Rose — Total ${amount} €.`);
+} else {
   alert(`✅ Réservation confirmée : ${nbAdult} adulte(s), ${nbChild} enfant(s), ${nbBaby} (-8 ans), ${nbFree} accompagnant(s), ${nbOctoberRose} Octobre Rose — Total ${amount} €. ${directMailOk ? "Email envoyé." : "Email non envoyé."}`);
+}
 };
 
 
