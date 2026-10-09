@@ -653,6 +653,37 @@ async function stopScanner(){
   scanning = false;
 }
 
+function isReservationIdWithOnlyMissingChars(receivedId, fullId, maxMissing = 2) {
+  const received = String(receivedId || "").trim();
+  const full = String(fullId || "").trim();
+
+  // Sécurité : on ne tente jamais de rapprochement sur un identifiant court.
+  if (received.length < 20 || full.length < 20) return false;
+
+  const missingCount = full.length - received.length;
+  if (missingCount < 1 || missingCount > maxMissing) return false;
+
+  // Le code reçu doit être exactement l'identifiant connu auquel il manque
+  // seulement 1 ou 2 caractères, dans le même ordre. Aucun remplacement accepté.
+  let i = 0;
+  for (let j = 0; j < full.length && i < received.length; j++) {
+    if (received[i] === full[j]) i++;
+  }
+  return i === received.length;
+}
+
+function findUniqueTicketWithMissingChars(receivedId) {
+  const matches = Object.entries(validTickets || {}).filter(([ticketId]) =>
+    isReservationIdWithOnlyMissingChars(receivedId, ticketId, 2)
+  );
+
+  // Garde-fou essentiel : aucune correction si plusieurs billets pourraient correspondre.
+  if (matches.length !== 1) return null;
+
+  const [ticketId, ticket] = matches[0];
+  return { ticketId, ticket };
+}
+
 function parseQrText(text) {
   let rawText = String(text || "").trim();
 
@@ -695,7 +726,20 @@ function parseQrText(text) {
   }
 
   const normalizedSeatKey = normalizeSeats(sieges);
-  const ticketFromReservation = reservationId ? validTickets[reservationId] : null;
+  let ticketFromReservation = reservationId ? validTickets[reservationId] : null;
+  let recoveredMissingChars = false;
+
+  // Si la douchette Bluetooth a perdu seulement 1 ou 2 caractères, on accepte
+  // UNIQUEMENT s'il existe une seule réservation connue compatible.
+  if (!ticketFromReservation && reservationId && Object.keys(validTickets).length) {
+    const recovered = findUniqueTicketWithMissingChars(reservationId);
+    if (recovered) {
+      ticketFromReservation = recovered.ticket;
+      reservationId = recovered.ticketId;
+      recoveredMissingChars = true;
+    }
+  }
+
   const ticketFromSeats = normalizedSeatKey ? ticketBySeats[normalizedSeatKey] : null;
   const matchedTicket = ticketFromReservation || ticketFromSeats || null;
   const ticketId = matchedTicket?.ticketId || reservationId || normalizedSeatKey || rawText;
@@ -706,6 +750,7 @@ function parseQrText(text) {
     raw: rawText,
     data,
     matchedTicket,
+    recoveredMissingChars,
     ticketId,
     nom: matchedTicket?.nom || data?.nom || data?.name || "Participant",
     email: matchedTicket?.email || data?.email || "",
@@ -790,7 +835,7 @@ async function onScanSuccess(text, options = {}){
   setScanned(list);
   renderHistory(); updateCounter();
   beep("ok"); vibrate("ok");
-  statusEl.innerHTML = `<span class='ok'>✅ Scan ${current.count}/${ticket.maxScans}</span>`;
+  statusEl.innerHTML = `<span class='ok'>✅ Scan ${current.count}/${ticket.maxScans}${ticket.recoveredMissingChars ? " — lecture récupérée" : ""}</span>`;
   setUsedTicketVisual(false);
   detailsEl.style.display = "block";
   detailsEl.innerHTML = `<div class="big-result ok">Entrée validée</div><strong>Réservation au nom de :</strong><br><b>${escapeHTML(current.nom)}</b><hr><strong>🎟️ Sièges :</strong> ${escapeHTML(current.sieges || "—")}${paymentStatusHtml(ticket)}`;
