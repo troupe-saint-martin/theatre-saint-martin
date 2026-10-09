@@ -956,10 +956,10 @@ if (handScannerInput) {
       if (!value) return;
 
       // Si la douchette n'envoie ni Entrée ni Tab, on valide seulement
-      // après 1,5 s sans nouveau caractère : le code a alors le temps
-      // d'arriver en entier, même sur une tablette ancienne.
+      // Après 250 ms sans nouveau caractère, on valide le code.
+      // Ce délai court est adapté aux téléphones et douchettes rapides.
       processHandScannerValue();
-    }, 1500);
+    }, 250);
   });
 }
 if (handScannerModeBtn) handScannerModeBtn.onclick = activateHandScannerMode;
