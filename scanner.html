@@ -851,33 +851,21 @@ if (handScannerInput) {
     }
   });
 
-  // Si la douchette ne met pas Entrée, on traite automatiquement après une courte pause.
+  // Certaines douchettes Bluetooth écrivent très lentement caractère par caractère.
+  // On attend donc une vraie fin de saisie avant de valider automatiquement,
+  // sinon un QR partiel peut être pris pour un billet complet.
   let handScannerTimer = null;
   handScannerInput.addEventListener("input", () => {
     clearTimeout(handScannerTimer);
     handScannerTimer = setTimeout(() => {
       const value = handScannerInput.value.trim();
+      if (!value) return;
 
-      // QR court R:... : traitement plus rapide.
-      if (/^R:.{4,}$/i.test(value)) {
-        processHandScannerValue();
-        return;
-      }
-
-      // Ancien QR JSON : on attend d’avoir probablement la fin.
-      if (value.startsWith("{") && value.endsWith("}")) {
-        processHandScannerValue();
-        return;
-      }
-
-      // URL éventuelle.
-      if (/^https?:\/\/.+[?&](r|reservationId)=/i.test(value)) {
-        processHandScannerValue();
-        return;
-      }
-
-      if (value.length > 20) processHandScannerValue();
-    }, 180);
+      // Si la douchette n'envoie ni Entrée ni Tab, on valide seulement
+      // après 1,5 s sans nouveau caractère : le code a alors le temps
+      // d'arriver en entier, même sur une tablette ancienne.
+      processHandScannerValue();
+    }, 1500);
   });
 }
 if (handScannerModeBtn) handScannerModeBtn.onclick = activateHandScannerMode;
