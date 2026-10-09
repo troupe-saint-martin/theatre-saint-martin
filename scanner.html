@@ -656,8 +656,10 @@ async function stopScanner(){
 function parseQrText(text) {
   let rawText = String(text || "").trim();
 
-  // Nettoyage des caractères envoyés par la douchette.
-  rawText = rawText.replace(/[\r\n\t]/g, "").trim();
+  // Nettoyage des caractères envoyés par la douchette / certains lecteurs QR.
+  // Certains appareils restituent les underscores sous la forme \_.
+  // On les normalise sans modifier le contenu des billets existants.
+  rawText = rawText.replace(/[\r\n\t]/g, "").replace(/\\_/g, "_").trim();
 
   let data = null;
   let reservationId = "";
