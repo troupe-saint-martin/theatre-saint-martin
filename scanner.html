@@ -440,6 +440,7 @@ const spectatorSearch = document.getElementById("spectatorSearch");
 const spectatorSearchResults = document.getElementById("spectatorSearchResults");
 const spectatorTicketCard = document.getElementById("spectatorTicketCard");
 let selectedManualTicketId = "";
+let manualSearchActive = false;
 
 function escapeHTML(value) {
   return String(value ?? "").replace(/[&<>'"]/g, char => ({
@@ -576,16 +577,40 @@ function showManualTicket(ticketId) {
       selectedManualTicketId = "";
       spectatorTicketCard.style.display = "none";
       spectatorTicketCard.innerHTML = "";
-      if (spectatorSearch) {
-        spectatorSearch.value = "";
-        spectatorSearch.focus();
-      }
+      if (spectatorSearch) spectatorSearch.value = "";
       if (spectatorSearchResults) spectatorSearchResults.style.display = "none";
+
+      // La recherche est terminée : on rend la douchette immédiatement prête.
+      manualSearchActive = false;
+      if (handScannerMode) setTimeout(focusHandScannerInput, 80);
     });
   }
 }
 
+function activateSpectatorSearch() {
+  manualSearchActive = true;
+  if (handScannerInput) handScannerInput.blur();
+  if (!spectatorSearch) return;
+
+  // Cet appel part directement du toucher de l'utilisateur : sur Android,
+  // il permet au clavier virtuel d'apparaître malgré la douchette Bluetooth HID.
+  try {
+    spectatorSearch.focus({ preventScroll: true });
+  } catch (e) {
+    spectatorSearch.focus();
+  }
+  try {
+    if (navigator.virtualKeyboard && typeof navigator.virtualKeyboard.show === "function") {
+      navigator.virtualKeyboard.show();
+    }
+  } catch (e) {}
+}
+
 if (spectatorSearch) {
+  spectatorSearch.addEventListener("pointerdown", activateSpectatorSearch);
+  spectatorSearch.addEventListener("click", activateSpectatorSearch);
+  spectatorSearch.addEventListener("focus", () => { manualSearchActive = true; });
+
   spectatorSearch.addEventListener("input", () => {
     selectedManualTicketId = "";
     if (spectatorTicketCard) {
@@ -895,6 +920,10 @@ async function onScanSuccess(text, options = {}){
 
 function focusHandScannerInput() {
   if (!handScannerInput) return;
+
+  // Ne jamais voler le focus pendant qu'on recherche un spectateur au clavier.
+  if (manualSearchActive || document.activeElement === spectatorSearch) return;
+
   try {
     handScannerInput.focus({ preventScroll: true });
     handScannerInput.select();
@@ -904,6 +933,7 @@ function focusHandScannerInput() {
 }
 
 async function activateHandScannerMode() {
+  manualSearchActive = false;
   handScannerMode = true;
   await stopScanner();
   const reader = document.getElementById("reader");
@@ -914,6 +944,7 @@ async function activateHandScannerMode() {
 }
 
 async function activateCameraMode() {
+  manualSearchActive = false;
   handScannerMode = false;
   const reader = document.getElementById("reader");
   if (reader) reader.style.display = "block";
