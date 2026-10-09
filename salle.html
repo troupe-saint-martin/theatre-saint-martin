@@ -1570,6 +1570,10 @@ body {
         <label for="walkInChildCount">Enfants 9–14 ans</label>
         <select id="walkInChildCount" style="min-width:110px;padding:9px;border:1px solid #bbb;border-radius:6px;font-size:16px;"></select>
       </div>
+      <div class="payment-line">
+        <label for="walkInFreeCount">Places gratuites</label>
+        <select id="walkInFreeCount" style="min-width:110px;padding:9px;border:1px solid #bbb;border-radius:6px;font-size:16px;"></select>
+      </div>
       <p id="walkInQuickSummary" style="margin:12px 0 0;font-weight:800;text-align:center;color:#2e7d32;">
         0 place — 0 €
       </p>
@@ -2472,7 +2476,8 @@ function getWalkInScatteredSeatIds(currentSeats = seats) {
 function updateWalkInQuickSummary() {
   const adults = parseInt(document.getElementById("walkInAdultCount")?.value || "0", 10) || 0;
   const children = parseInt(document.getElementById("walkInChildCount")?.value || "0", 10) || 0;
-  const total = adults + children;
+  const free = parseInt(document.getElementById("walkInFreeCount")?.value || "0", 10) || 0;
+  const total = adults + children + free;
   const amount = adults * PRICE_ADULT + children * PRICE_CHILD;
   const label = document.getElementById("walkInQuickSummary");
   if (label) label.textContent = `${total} place${total > 1 ? "s" : ""} — ${amount.toFixed(2)} €`;
@@ -2485,10 +2490,13 @@ function openWalkInQuickModal() {
 
   const adultSelect = document.getElementById("walkInAdultCount");
   const childSelect = document.getElementById("walkInChildCount");
+  const freeSelect = document.getElementById("walkInFreeCount");
   fillWalkInCountSelect(adultSelect);
   fillWalkInCountSelect(childSelect);
+  fillWalkInCountSelect(freeSelect);
   adultSelect.value = "0";
   childSelect.value = "0";
+  freeSelect.value = "0";
   updateWalkInQuickSummary();
   document.getElementById("walkInQuickModal").classList.remove("hidden");
 }
@@ -2511,12 +2519,12 @@ async function refreshWalkInAvailability() {
   updateStatsBar();
 }
 
-async function commitAutomaticWalkInSale(nbAdult, nbChild, allowScattered) {
+async function commitAutomaticWalkInSale(nbAdult, nbChild, nbFree, allowScattered) {
   if (typeof runTransaction !== "function") {
     throw new Error("Transaction Firebase indisponible.");
   }
 
-  const totalPeople = nbAdult + nbChild;
+  const totalPeople = nbAdult + nbChild + nbFree;
   const amount = nbAdult * PRICE_ADULT + nbChild * PRICE_CHILD;
   const reservationId = crypto.randomUUID();
 
@@ -2534,21 +2542,24 @@ async function commitAutomaticWalkInSale(nbAdult, nbChild, allowScattered) {
 
     const nextSeats = { ...currentSeats };
     assigned.forEach((id, index) => {
+      const type = index < nbAdult
+        ? "adulte"
+        : (index < nbAdult + nbChild ? "enfant" : "gratuit");
       nextSeats[id] = {
         reservationId,
         name: "VENTE SUR PLACE",
         email: "",
         phone: "",
         paid: true,
-        free: false,
+        free: type === "gratuit",
         source: "vente_sur_place",
         nbAdult,
         nbChild,
         nbBaby: 0,
-        nbFree: 0,
+        nbFree,
         nbOctoberRose: 0,
         amount,
-        type: index < nbAdult ? "adulte" : "enfant"
+        type
       };
     });
 
@@ -2573,6 +2584,7 @@ async function commitAutomaticWalkInSale(nbAdult, nbChild, allowScattered) {
 
 document.getElementById("walkInAdultCount").addEventListener("change", updateWalkInQuickSummary);
 document.getElementById("walkInChildCount").addEventListener("change", updateWalkInQuickSummary);
+document.getElementById("walkInFreeCount").addEventListener("change", updateWalkInQuickSummary);
 
 document.getElementById("walkInSale").onclick = () => {
   openWalkInQuickModal();
@@ -2594,10 +2606,11 @@ document.getElementById("walkInQuickSave").onclick = async () => {
   const saveBtn = document.getElementById("walkInQuickSave");
   const nbAdult = parseInt(document.getElementById("walkInAdultCount").value || "0", 10) || 0;
   const nbChild = parseInt(document.getElementById("walkInChildCount").value || "0", 10) || 0;
-  const totalPeople = nbAdult + nbChild;
+  const nbFree = parseInt(document.getElementById("walkInFreeCount").value || "0", 10) || 0;
+  const totalPeople = nbAdult + nbChild + nbFree;
 
   if (totalPeople <= 0) {
-    alert("Indique au moins 1 adulte ou 1 enfant.");
+    alert("Indique au moins 1 adulte, 1 enfant ou 1 place gratuite.");
     return;
   }
 
@@ -2646,7 +2659,7 @@ document.getElementById("walkInQuickSave").onclick = async () => {
       allowScattered = true;
     }
 
-    const result = await commitAutomaticWalkInSale(nbAdult, nbChild, allowScattered);
+    const result = await commitAutomaticWalkInSale(nbAdult, nbChild, nbFree, allowScattered);
     if (!result) {
       alert("⚠️ Les places viennent d'être modifiées sur un autre appareil. Rien n'a été enregistré. Réessayez simplement la vente sur place.");
       return;
@@ -2654,7 +2667,7 @@ document.getElementById("walkInQuickSave").onclick = async () => {
 
     closeWalkInQuickModal();
     const seatText = result.assignedIds.join(", ");
-    alert(`✅ Vente sur place enregistrée et encaissée.\n\n${totalPeople} place${totalPeople > 1 ? "s" : ""} : ${seatText}\nTotal : ${result.amount.toFixed(2)} €`);
+    alert(`✅ Vente sur place enregistrée.\n\n${totalPeople} place${totalPeople > 1 ? "s" : ""} : ${seatText}\nTotal encaissé : ${result.amount.toFixed(2)} €`);
   } catch (err) {
     console.error("Erreur vente sur place automatique", err);
     alert("❌ Impossible d'enregistrer la vente sur place. Rien n'a été modifié. Réessayez.");
@@ -3880,6 +3893,7 @@ function updateTable() {
     }`;
 
     const hasFreeSeat = info.seats.some(s => s.type === "gratuit");
+    const allSeatsFree = info.seats.length > 0 && info.seats.every(s => s.type === "gratuit");
     const hasOctoberRoseSeat = info.seats.some(s => s.type === "octobre_rose");
     const freeBadge = hasFreeSeat
       ? '<span style="width:22px;height:22px;border-radius:50%;background:#8e24aa;color:white;font-weight:700;display:inline-flex;align-items:center;justify-content:center;font-size:13px;">G</span>'
@@ -3888,16 +3902,18 @@ function updateTable() {
       ? '<span style="display:inline-flex;align-items:center;gap:4px;background:#f8bbd0;color:#880e4f;border-radius:999px;padding:3px 8px;font-size:12px;font-weight:900;">🎀 Octobre Rose</span>'
       : '';
 
-    const statusLabel = info.allPaid
-      ? "💰"
-      : (isPendingPublic ? "⏳ Demande à valider" : (isPublic ? "✅ Confirmée / ❌ Non payé" : "❌ Partiel / Non payé"));
+    const statusLabel = allSeatsFree
+      ? "🎟️ Gratuit"
+      : (info.allPaid
+        ? "💰"
+        : (isPendingPublic ? "⏳ Demande à valider" : (isPublic ? "✅ Confirmée / ❌ Non payé" : "❌ Partiel / Non payé")));
 
     header.innerHTML = `
 <div>
   ${info.isTestReservation ? `<span style="display:inline-block;background:#bf360c;color:white;border-radius:999px;padding:2px 8px;margin-bottom:4px;font-size:.78rem;font-weight:900;">🧪 TEST</span><br>` : ""}
   ${info.isTestReservation ? "🧪" : (isPublic ? "📨" : "👤")} ${escapeHTML(name)}
   ${
-    (info.free && !hasOctoberRoseSeat)
+    (info.free && !hasOctoberRoseSeat && !info.isWalkInSale)
       ? ""
       : `<br><span style="font-weight:600;color:${isPublic && !info.allPaid ? "#d84315" : "red"};">
         (${info.seats.length} ${isPendingPublic ? "places demandées" : "places"})
@@ -4058,7 +4074,7 @@ function updateTable() {
       <h4>💬 SMS / suivi</h4>
       <div class="compact-sms-list">
         <div class="compact-sms-row"><strong>Réservation</strong><div>${smsStatusLine}</div></div>
-        <div class="compact-sms-row"><strong>Règlement</strong><div>${paymentSmsLine || `<span style="color:#777;font-weight:600;">✅ Déjà payé</span>`}</div></div>
+        <div class="compact-sms-row"><strong>Règlement</strong><div>${paymentSmsLine || (allSeatsFree ? `<span style="color:#6a1b9a;font-weight:700;">🎟️ Gratuit — 0 €</span>` : `<span style="color:#777;font-weight:600;">✅ Déjà payé</span>`)}</div></div>
         <div class="compact-sms-row"><strong>Billet</strong><div>${ticketSmsLine}</div></div>
       </div>
     </div>
@@ -4136,11 +4152,20 @@ function updateTable() {
           <button class="group-remove-btn" data-name="${escapeHTML(name)}" style="background:#d32f2f;color:white;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;">🗑️ Retirer</button>
           <button class="group-validate-btn" data-name="${escapeHTML(name)}" style="display:none;background:#1565c0;color:white;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;">✅ Valider</button>
           <button
+            class="view-ticket-btn"
+            data-name="${escapeHTML(name)}"
+            data-email="${escapeHTML(info.email || "")}"
+            data-reservation-id="${escapeHTML(reservationId || "")}"
+            style="background:#6a1b9a;color:white;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;">
+            👁️ Afficher les billets
+          </button>
+          <button
             class="resend-ticket-btn"
             data-name="${escapeHTML(name)}"
             data-email="${escapeHTML(info.email || "")}"
+            data-reservation-id="${escapeHTML(reservationId || "")}"
             style="background:#1976d2;color:white;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;">
-            📧 Billet
+            📧 Renvoyer les billets
           </button>
         `}
       </div>
@@ -4406,6 +4431,69 @@ function generateBilletHTML(user) {
 }
 
 // ===================================================
+// 👁️ BOUTON ADMIN : AFFICHER LE BILLET À L'ÉCRAN
+//     Utile à l'entrée si le spectateur ne retrouve pas son billet.
+// ===================================================
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest(".view-ticket-btn");
+  if (!btn) return;
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  if (!admin) {
+    alert("❌ Mode admin requis");
+    return;
+  }
+
+  const reservationId = String(btn.dataset.reservationId || "").trim();
+  const email = String(btn.dataset.email || "").trim();
+  const name = String(btn.dataset.name || "").trim();
+
+  const clientSeats = Object.entries(seats).filter(([_, seat]) => {
+    if (!seat) return false;
+    if (reservationId) return String(seat.reservationId || "") === reservationId;
+    if (email) return String(seat.email || "").toLowerCase() === email.toLowerCase();
+    return name && String(seat.name || "") === name;
+  });
+
+  if (!clientSeats.length) {
+    alert("❌ Aucune réservation trouvée");
+    return;
+  }
+
+  const firstSeat = clientSeats[0][1];
+  const user = {
+    reservationId: firstSeat.reservationId || reservationId || "",
+    name: firstSeat.name || name || "",
+    email: firstSeat.email || email || "",
+    phone: firstSeat.phone || "",
+    paid: clientSeats.every(([_, seat]) => seat.paid === true),
+    amount: firstSeat.amount || 0
+  };
+
+  const modal = document.getElementById("ticketDisplayModal");
+  const content = document.getElementById("ticketDisplayContent");
+  if (!modal || !content) {
+    alert("❌ Impossible d'afficher le billet.");
+    return;
+  }
+
+  content.innerHTML = generateBilletHTML(user);
+
+  // QR plus grand pour être facilement scanné depuis l'écran.
+  const qr = content.querySelector('img[alt="QR Code"]');
+  if (qr) {
+    qr.style.width = "260px";
+    qr.style.height = "260px";
+    qr.style.maxWidth = "82vw";
+    qr.style.objectFit = "contain";
+  }
+
+  modal.classList.remove("hidden");
+});
+
+// ===================================================
 // 📧 BOUTON ADMIN : RENVOYER LE BILLET AU CLIENT
 // ===================================================
 document.addEventListener("click", async (e) => {
@@ -4419,15 +4507,18 @@ document.addEventListener("click", async (e) => {
 
   const email = btn.dataset.email;
   const name = btn.dataset.name;
+  const reservationId = String(btn.dataset.reservationId || "").trim();
 
   if (!email) {
     alert("❌ Aucun email pour ce client");
     return;
   }
 
-  // 🔍 Retrouve tous les sièges du client
+  // 🔍 Retrouve les sièges de cette réservation en priorité.
   const clientSeats = Object.entries(seats)
-    .filter(([_, s]) => s.email === email);
+    .filter(([_, seat]) => reservationId
+      ? String(seat.reservationId || "") === reservationId
+      : seat.email === email);
 
   if (!clientSeats.length) {
     alert("❌ Aucune réservation trouvée");
@@ -6768,6 +6859,17 @@ if (mailingSendBtn) {
 </div>
 
 
+<!-- 🎟️ Modale d'affichage du billet à scanner sur place -->
+<div id="ticketDisplayModal" class="modal hidden">
+  <div class="modal-content" style="max-width:600px;max-height:88vh;overflow:auto;text-align:center;">
+    <h3 style="margin-top:0;">🎟️ Billet à scanner</h3>
+    <div id="ticketDisplayContent" style="padding:10px;margin-top:10px;background:#fff;"></div>
+    <div style="text-align:center;margin-top:12px;">
+      <button id="closeTicketDisplay" type="button" style="background:#616161;color:white;">Fermer</button>
+    </div>
+  </div>
+</div>
+
 <!-- 💌 Modale de prévisualisation d’email -->
 <div id="emailPreviewModal" class="modal hidden">
   <div class="modal-content" style="max-width:600px;max-height:80vh;overflow:auto;text-align:left;">
@@ -6788,6 +6890,9 @@ if (mailingSendBtn) {
 document.addEventListener("click", (e) => {
   if (e.target.id === "closeEmailPreview") {
     document.getElementById("emailPreviewModal").classList.add("hidden");
+  }
+  if (e.target.id === "closeTicketDisplay") {
+    document.getElementById("ticketDisplayModal")?.classList.add("hidden");
   }
 });
 async function sendViaBrevo(to, subject, html, options = {}) {
