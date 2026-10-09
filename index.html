@@ -319,6 +319,75 @@ h1 {
 
 
 
+/* === VENTE SUR PLACE DIRECTE DEPUIS LE TABLEAU DE BORD === */
+.walkin-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  box-sizing: border-box;
+  background: rgba(0,0,0,.62);
+}
+.walkin-overlay.hidden { display: none; }
+.walkin-panel {
+  width: min(390px, 94vw);
+  background: #fffaf0;
+  color: #2a0202;
+  border-radius: 16px;
+  padding: 20px;
+  box-sizing: border-box;
+  box-shadow: 0 18px 60px rgba(0,0,0,.45);
+}
+.walkin-panel h3 { margin: 0 0 8px; text-align: center; }
+.walkin-panel .walkin-help {
+  margin: 0 0 14px;
+  line-height: 1.4;
+  color: #555;
+  font-size: .94rem;
+  text-align: center;
+}
+.walkin-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 10px 0;
+  font-weight: 700;
+}
+.walkin-line select {
+  min-width: 112px;
+  padding: 10px;
+  border: 1px solid #b9b9b9;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 17px;
+}
+#walkInQuickSummary {
+  margin: 14px 0;
+  text-align: center;
+  font-weight: 900;
+  color: #2e7d32;
+}
+.walkin-buttons {
+  display: flex;
+  gap: 9px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.walkin-buttons button {
+  border: 0;
+  border-radius: 9px;
+  padding: 11px 14px;
+  color: #fff;
+  font-weight: 800;
+  cursor: pointer;
+}
+#walkInQuickSave { background: #2e7d32; }
+#walkInQuickCancel { background: #757575; }
+.walkin-buttons button:disabled { opacity: .6; cursor: wait; }
 
 
 </style>
@@ -378,10 +447,38 @@ h1 {
     </div>
   </div>
 
+
+  <!-- 💶 Vente sur place : reste sur le tableau de bord -->
+  <div id="walkInQuickModal" class="walkin-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="walkInTitle">
+    <div class="walkin-panel">
+      <h3 id="walkInTitle">💶 Vente sur place</h3>
+      <p class="walkin-help">
+        Les places sont attribuées automatiquement <strong>côte à côte</strong>,
+        en commençant par la <strong>rangée L</strong>, puis M, N…
+      </p>
+
+      <div class="walkin-line">
+        <label for="walkInAdultCount">Adultes</label>
+        <select id="walkInAdultCount"></select>
+      </div>
+      <div class="walkin-line">
+        <label for="walkInChildCount">Enfants 9–14 ans</label>
+        <select id="walkInChildCount"></select>
+      </div>
+
+      <p id="walkInQuickSummary">0 place — 0.00 €</p>
+
+      <div class="walkin-buttons">
+        <button id="walkInQuickSave" type="button">✅ Attribuer les places</button>
+        <button id="walkInQuickCancel" type="button">Annuler</button>
+      </div>
+    </div>
+  </div>
+
   <!-- === SCRIPT FIREBASE UNIQUE === -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js";
+    import { getDatabase, ref, onValue, get, runTransaction } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyXXXX_TON_API_KEY",
@@ -396,64 +493,323 @@ h1 {
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
     const seatsRef = ref(db, "seats");
+    const publicHoldsRef = ref(db, "spectacles/amies_2026_10_11/holds");
+    const testSeatsRef = ref(db, "spectacles/amies_2026_10_11/test_seats");
+    const pricesRef = ref(db, "spectacles/amies_2026_10_11/prices");
 
-    onValue(seatsRef, (snapshot) => {
-  const data = snapshot.val() || {};
+    // Tarifs utilisés pour la vente sur place.
+    let PRICE_ADULT = parseFloat(localStorage.getItem("PRICE_ADULT")) || 14;
+    let PRICE_CHILD = parseFloat(localStorage.getItem("PRICE_CHILD")) || 10;
 
-  let totalEncaisse = 0;
-  let totalReservations = 0;
-  let billetsNonPayes = 0;
-  let totalPlacesOccupees = 0;
-  const totalPlacesMax = 342; // capacité max
+    let seats = {};
+    let testSeats = {};
+    let publicHolds = {};
 
-  for (const seatId in data) {
-    const seat = data[seatId];
-    if (!seat) continue;
+    // Plan : 19 rangées (A à S), 16 vrais fauteuils par rangée.
+    // Les deux strapontins de chaque rangée (S15/S16) sont exclus du taux de remplissage.
+    const ALL_ROWS = [...Array(19)].map((_, i) => String.fromCharCode(65 + i));
+    const SEAT_NUMS = [15,13,11,9,7,5,3,1,2,4,6,8,10,12,14,16];
+    const REGULAR_SEAT_CAPACITY = ALL_ROWS.length * SEAT_NUMS.length; // 304 fauteuils
 
-    // 🔹 Considère le siège "réservé" s'il a un type défini (adulte, enfant, moins8)
-    const estReserve = seat.type && seat.type.trim() !== "";
+    const WALK_IN_START_ROW = "L";
+    const WALK_IN_AUTO_ROWS = ALL_ROWS.slice(Math.max(0, ALL_ROWS.indexOf(WALK_IN_START_ROW)));
 
-if (seat.paid === true) {
-  totalReservations++;
-  totalPlacesOccupees++;
-}
-
-
-    // 🔹 Paiement et encaissement
-    if (seat.paid === true) {
-      totalEncaisse +=
-        seat.type === "adulte" ? 14 :
-        seat.type === "enfant" ? 10 :
-        seat.type === "moins8" ? 0 : 0;
-    } else if (estReserve) {
-      billetsNonPayes++;
+    function isStrapontinId(seatId) {
+      return /-S(?:15|16)$/.test(String(seatId || ""));
     }
-  }
 
-  // 🔹 Taux de remplissage
-  const tauxRemplissage = totalPlacesMax > 0
-    ? Math.round((totalPlacesOccupees / totalPlacesMax) * 100)
-    : 0;
+    function isActivePublicHold(h) {
+      return h && h.expiresAt && new Date(h.expiresAt).getTime() > Date.now() && h.status !== "released";
+    }
 
-  // 🔹 Mise à jour de l'interface
-  document.getElementById("totalReserved").textContent = totalReservations;
-  document.getElementById("totalAmount").textContent = totalEncaisse.toFixed(2) + " €";
-  document.getElementById("fillRate").textContent = tauxRemplissage + "%";
+    function updateDashboard(data) {
+      let totalEncaisse = 0;
+      let totalReservations = 0;
+      let billetsNonPayes = 0;
+      let regularSeatsOccupied = 0;
 
-  // 🔹 Alerte billets non payés
-  const alertDiv = document.getElementById("alerts");
-  if (billetsNonPayes === 0) {
-    alertDiv.textContent = "Tous les billets sont payés ✅";
-    alertDiv.classList.add("good");
-  } else {
-    alertDiv.textContent = `${billetsNonPayes} billet${billetsNonPayes > 1 ? "s" : ""} non payé${billetsNonPayes > 1 ? "s" : ""} ⚠️`;
-    alertDiv.classList.remove("good");
-  }
-});
+      for (const seatId in data) {
+        const seat = data[seatId];
+        if (!seat) continue;
 
+        const estReserve = seat.type && String(seat.type).trim() !== "";
 
+        if (seat.paid === true) {
+          totalReservations++;
+          if (!isStrapontinId(seatId)) regularSeatsOccupied++;
 
-    document.getElementById("quickWalkIn").onclick = () => window.location.href = "salle.html?vente_sur_place=1";
+          totalEncaisse +=
+            seat.type === "adulte" ? PRICE_ADULT :
+            seat.type === "enfant" ? PRICE_CHILD : 0;
+        } else if (estReserve) {
+          billetsNonPayes++;
+        }
+      }
+
+      // Taux calculé UNIQUEMENT sur les 304 fauteuils classiques, sans strapontins.
+      const tauxRemplissage = REGULAR_SEAT_CAPACITY > 0
+        ? Math.round((regularSeatsOccupied / REGULAR_SEAT_CAPACITY) * 100)
+        : 0;
+
+      document.getElementById("totalReserved").textContent = totalReservations;
+      document.getElementById("totalAmount").textContent = totalEncaisse.toFixed(2) + " €";
+      document.getElementById("fillRate").textContent = tauxRemplissage + "%";
+
+      const alertDiv = document.getElementById("alerts");
+      if (billetsNonPayes === 0) {
+        alertDiv.textContent = "Tous les billets sont payés ✅";
+        alertDiv.classList.add("good");
+      } else {
+        alertDiv.textContent = `${billetsNonPayes} billet${billetsNonPayes > 1 ? "s" : ""} non payé${billetsNonPayes > 1 ? "s" : ""} ⚠️`;
+        alertDiv.classList.remove("good");
+      }
+    }
+
+    onValue(seatsRef, snapshot => {
+      seats = snapshot.val() || {};
+      updateDashboard(seats);
+    });
+
+    onValue(pricesRef, snapshot => {
+      const p = snapshot.val() || {};
+      const adult = parseFloat(p.adult);
+      const child = parseFloat(p.child);
+      if (Number.isFinite(adult) && adult >= 0) PRICE_ADULT = adult;
+      if (Number.isFinite(child) && child >= 0) PRICE_CHILD = child;
+      localStorage.setItem("PRICE_ADULT", PRICE_ADULT);
+      localStorage.setItem("PRICE_CHILD", PRICE_CHILD);
+      updateDashboard(seats);
+      updateWalkInQuickSummary();
+    });
+
+    function fillWalkInCountSelect(selectEl, max = 16) {
+      if (!selectEl || selectEl.options.length) return;
+      for (let i = 0; i <= max; i++) {
+        const option = document.createElement("option");
+        option.value = String(i);
+        option.textContent = String(i);
+        selectEl.appendChild(option);
+      }
+    }
+
+    function isWalkInSeatAvailable(id, currentSeats = seats) {
+      return !currentSeats?.[id]
+        && !testSeats?.[id]
+        && !isActivePublicHold(publicHolds?.[id]);
+    }
+
+    function getBestContiguousWalkInSeats(count, currentSeats = seats) {
+      if (!Number.isInteger(count) || count <= 0 || count > SEAT_NUMS.length) return null;
+      const center = (SEAT_NUMS.length - 1) / 2;
+
+      for (const rowLetter of WALK_IN_AUTO_ROWS) {
+        let best = null;
+        let bestScore = Infinity;
+
+        for (let start = 0; start <= SEAT_NUMS.length - count; start++) {
+          const blockNums = SEAT_NUMS.slice(start, start + count);
+          const ids = blockNums.map(n => `${rowLetter}-${n}`);
+          if (!ids.every(id => isWalkInSeatAvailable(id, currentSeats))) continue;
+
+          const blockCenter = start + (count - 1) / 2;
+          const score = Math.abs(blockCenter - center);
+          if (score < bestScore) {
+            best = ids;
+            bestScore = score;
+          }
+        }
+        if (best) return best;
+      }
+      return null;
+    }
+
+    function getWalkInScatteredSeatIds(currentSeats = seats) {
+      const result = [];
+
+      // D'abord les vrais fauteuils, rangée par rangée, au plus près du centre.
+      for (const rowLetter of WALK_IN_AUTO_ROWS) {
+        const regular = SEAT_NUMS
+          .map(n => ({ id: `${rowLetter}-${n}`, n }))
+          .filter(item => isWalkInSeatAvailable(item.id, currentSeats))
+          .sort((a, b) => a.n - b.n);
+        result.push(...regular.map(item => item.id));
+      }
+
+      // Strapontins uniquement en dernier recours.
+      for (const rowLetter of WALK_IN_AUTO_ROWS) {
+        for (const id of [`${rowLetter}-S15`, `${rowLetter}-S16`]) {
+          if (isWalkInSeatAvailable(id, currentSeats)) result.push(id);
+        }
+      }
+      return result;
+    }
+
+    function updateWalkInQuickSummary() {
+      const adults = parseInt(document.getElementById("walkInAdultCount")?.value || "0", 10) || 0;
+      const children = parseInt(document.getElementById("walkInChildCount")?.value || "0", 10) || 0;
+      const total = adults + children;
+      const amount = adults * PRICE_ADULT + children * PRICE_CHILD;
+      const label = document.getElementById("walkInQuickSummary");
+      if (label) label.textContent = `${total} place${total > 1 ? "s" : ""} — ${amount.toFixed(2)} €`;
+    }
+
+    function openWalkInQuickModal() {
+      const adultSelect = document.getElementById("walkInAdultCount");
+      const childSelect = document.getElementById("walkInChildCount");
+      fillWalkInCountSelect(adultSelect);
+      fillWalkInCountSelect(childSelect);
+      adultSelect.value = "0";
+      childSelect.value = "0";
+      updateWalkInQuickSummary();
+      document.getElementById("walkInQuickModal").classList.remove("hidden");
+    }
+
+    function closeWalkInQuickModal() {
+      document.getElementById("walkInQuickModal").classList.add("hidden");
+    }
+
+    async function refreshWalkInAvailability() {
+      const [seatSnapshot, holdSnapshot, testSnapshot, priceSnapshot] = await Promise.all([
+        get(seatsRef), get(publicHoldsRef), get(testSeatsRef), get(pricesRef)
+      ]);
+      seats = seatSnapshot.val() || {};
+      publicHolds = holdSnapshot.val() || {};
+      testSeats = testSnapshot.val() || {};
+
+      const p = priceSnapshot.val() || {};
+      const adult = parseFloat(p.adult);
+      const child = parseFloat(p.child);
+      if (Number.isFinite(adult) && adult >= 0) PRICE_ADULT = adult;
+      if (Number.isFinite(child) && child >= 0) PRICE_CHILD = child;
+      updateDashboard(seats);
+      updateWalkInQuickSummary();
+    }
+
+    async function commitAutomaticWalkInSale(nbAdult, nbChild, allowScattered) {
+      const totalPeople = nbAdult + nbChild;
+      const amount = nbAdult * PRICE_ADULT + nbChild * PRICE_CHILD;
+      const reservationId = crypto.randomUUID();
+
+      const result = await runTransaction(seatsRef, currentValue => {
+        const currentSeats = currentValue || {};
+        let assigned = getBestContiguousWalkInSeats(totalPeople, currentSeats);
+
+        if (!assigned && allowScattered) {
+          assigned = getWalkInScatteredSeatIds(currentSeats).slice(0, totalPeople);
+          if (assigned.length !== totalPeople) assigned = null;
+        }
+        if (!assigned) return;
+
+        const nextSeats = { ...currentSeats };
+        assigned.forEach((id, index) => {
+          nextSeats[id] = {
+            reservationId,
+            name: "VENTE SUR PLACE",
+            email: "",
+            phone: "",
+            paid: true,
+            free: false,
+            source: "vente_sur_place",
+            nbAdult,
+            nbChild,
+            nbBaby: 0,
+            nbFree: 0,
+            nbOctoberRose: 0,
+            amount,
+            type: index < nbAdult ? "adulte" : "enfant"
+          };
+        });
+        return nextSeats;
+      }, { applyLocally: false });
+
+      if (!result.committed) return null;
+      const finalSeats = result.snapshot.val() || {};
+      const assignedIds = Object.entries(finalSeats)
+        .filter(([_, data]) => data?.reservationId === reservationId)
+        .map(([id]) => id);
+      seats = finalSeats;
+      updateDashboard(seats);
+      return { reservationId, assignedIds, amount };
+    }
+
+    document.getElementById("walkInAdultCount").addEventListener("change", updateWalkInQuickSummary);
+    document.getElementById("walkInChildCount").addEventListener("change", updateWalkInQuickSummary);
+
+    // IMPORTANT : le bouton reste sur index.html et ouvre directement l'encart.
+    document.getElementById("quickWalkIn").onclick = openWalkInQuickModal;
+    document.getElementById("walkInQuickCancel").onclick = closeWalkInQuickModal;
+
+    document.getElementById("walkInQuickSave").onclick = async () => {
+      const saveBtn = document.getElementById("walkInQuickSave");
+      const nbAdult = parseInt(document.getElementById("walkInAdultCount").value || "0", 10) || 0;
+      const nbChild = parseInt(document.getElementById("walkInChildCount").value || "0", 10) || 0;
+      const totalPeople = nbAdult + nbChild;
+
+      if (totalPeople <= 0) {
+        alert("Indique au moins 1 adulte ou 1 enfant.");
+        return;
+      }
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = "Attribution…";
+
+      try {
+        await refreshWalkInAvailability();
+        let contiguous = getBestContiguousWalkInSeats(totalPeople, seats);
+        let availableIds = getWalkInScatteredSeatIds(seats);
+
+        if (availableIds.length < totalPeople) {
+          alert(`⚠️ Il ne reste plus que ${availableIds.length} place${availableIds.length > 1 ? "s" : ""} disponible${availableIds.length > 1 ? "s" : ""} dans la zone de vente sur place (rangées L à S), alors que ${totalPeople} places ont été demandées.\n\nAucune vente n'a été enregistrée.`);
+          return;
+        }
+
+        let allowScattered = false;
+        if (!contiguous) {
+          const ok = confirm(`⚠️ Il n'y a plus ${totalPeople} places côte à côte disponibles.\n\nIl reste suffisamment de places, mais elles seront séparées. Voulez-vous continuer avec des places dispatchées ?`);
+          if (!ok) {
+            closeWalkInQuickModal();
+            return;
+          }
+          allowScattered = true;
+        }
+
+        // Deuxième lecture juste avant l'écriture, comme dans salle.html.
+        await refreshWalkInAvailability();
+        contiguous = getBestContiguousWalkInSeats(totalPeople, seats);
+        availableIds = getWalkInScatteredSeatIds(seats);
+
+        if (availableIds.length < totalPeople) {
+          alert(`⚠️ La disponibilité vient de changer. Il ne reste plus que ${availableIds.length} place${availableIds.length > 1 ? "s" : ""} dans les rangées L à S.\n\nAucune vente n'a été enregistrée.`);
+          return;
+        }
+
+        if (!contiguous && !allowScattered) {
+          const ok = confirm(`⚠️ La disponibilité vient de changer : il n'y a plus ${totalPeople} places côte à côte.\n\nVoulez-vous accepter des places séparées ?`);
+          if (!ok) {
+            closeWalkInQuickModal();
+            return;
+          }
+          allowScattered = true;
+        }
+
+        const result = await commitAutomaticWalkInSale(nbAdult, nbChild, allowScattered);
+        if (!result) {
+          alert("⚠️ Les places viennent d'être modifiées sur un autre appareil. Rien n'a été enregistré. Réessayez simplement la vente sur place.");
+          return;
+        }
+
+        closeWalkInQuickModal();
+        const seatText = result.assignedIds.join(", ");
+        alert(`✅ Vente sur place enregistrée et encaissée.\n\n${totalPeople} place${totalPeople > 1 ? "s" : ""} : ${seatText}\nTotal : ${result.amount.toFixed(2)} €`);
+      } catch (err) {
+        console.error("Erreur vente sur place automatique", err);
+        alert("❌ Impossible d'enregistrer la vente sur place. Rien n'a été modifié. Réessayez.");
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = "✅ Attribuer les places";
+      }
+    };
+
     document.getElementById("buyTickets").onclick = () => window.location.href = "salle.html";
     document.getElementById("scanTicket").onclick = () => window.location.href = "scanner.html";
   </script>
