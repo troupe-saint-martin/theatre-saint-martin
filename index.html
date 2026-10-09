@@ -533,15 +533,17 @@ h1 {
         if (!seat) continue;
 
         const estReserve = seat.type && String(seat.type).trim() !== "";
+        if (!estReserve) continue;
+
+        // Toutes les places réellement réservées comptent, qu'elles soient payées ou non.
+        totalReservations++;
+        if (!isStrapontinId(seatId)) regularSeatsOccupied++;
 
         if (seat.paid === true) {
-          totalReservations++;
-          if (!isStrapontinId(seatId)) regularSeatsOccupied++;
-
           totalEncaisse +=
             seat.type === "adulte" ? PRICE_ADULT :
             seat.type === "enfant" ? PRICE_CHILD : 0;
-        } else if (estReserve) {
+        } else {
           billetsNonPayes++;
         }
       }
