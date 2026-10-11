@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Bilan soirée — Troupe Saint-Martin</title>
+  <style>
+    :root{--bg:#f7f3f0;--card:#fff;--ink:#2b211d;--muted:#6f625b;--line:#e3d8d2;--rose:#8f4b5b;--green:#2f6d52;--orange:#9a641f;--red:#a13c3c;--violet:#6b4e7d}
+    *{box-sizing:border-box} body{margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--ink)}
+    .wrap{max-width:1180px;margin:auto;padding:18px}.top{display:flex;gap:12px;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;margin-bottom:14px}
+    h1{font-size:1.75rem;margin:.1rem 0}.sub{color:var(--muted);font-size:.95rem;line-height:1.45;max-width:760px}
+    button{border:0;border-radius:8px;padding:10px 13px;font-weight:700;cursor:pointer;background:#2f5d77;color:white}button.secondary{background:#6c625d}button.print{background:#6b4e7d}
+    .actions{display:flex;gap:8px;flex-wrap:wrap}.status{padding:10px 12px;border-radius:8px;background:#fff8e8;border:1px solid #ead7a8;margin-bottom:14px}
+    .grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:12px 0}.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;box-shadow:0 2px 8px rgba(0,0,0,.04)}
+    .k{font-size:.82rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.03em}.v{font-size:1.9rem;font-weight:800;margin-top:4px}.small{font-size:.83rem;color:var(--muted);margin-top:4px}.green .v{color:var(--green)}.rose .v{color:var(--rose)}.orange .v{color:var(--orange)}.red .v{color:var(--red)}.violet .v{color:var(--violet)}
+    .section{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:15px;margin-top:12px}.section h2{margin:0 0 10px;font-size:1.15rem}.note{background:#fff7f3;border-left:4px solid #c78696;padding:10px 12px;border-radius:6px;line-height:1.45}
+    table{width:100%;border-collapse:collapse;font-size:.9rem}th,td{padding:9px 8px;border-bottom:1px solid #eee;text-align:left;vertical-align:top}th{background:#faf7f5;position:sticky;top:0;z-index:1}.right{text-align:right}.center{text-align:center}.nowrap{white-space:nowrap}
+    .tag{display:inline-block;border-radius:999px;padding:3px 7px;font-size:.78rem;font-weight:700}.paid{background:#e5f3ea;color:#205f42}.unpaid{background:#fde9e9;color:#963d3d}.present{background:#e7f4ec;color:#2d694e}.partial{background:#fff0d9;color:#8a5d19}.absent{background:#eee;color:#5e5956}.walkin{background:#eee5f4;color:#68467f}.attention{background:#fff3cf;color:#7e5d10}
+    .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}.filters button{background:#eee;color:#403833;padding:7px 10px}.filters button.active{background:#403833;color:#fff}
+    .summaryText{white-space:pre-wrap;background:#fbfaf9;border:1px solid #e8dfda;padding:12px;border-radius:8px;line-height:1.5;font-family:Arial,Helvetica,sans-serif}
+    .hidden{display:none!important}
+    @media(max-width:850px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.wrap{padding:10px}.v{font-size:1.55rem}.tablewrap{overflow:auto}th,td{min-width:90px}}
+    @media print{body{background:#fff}.actions,.filters,.status button{display:none!important}.wrap{max-width:none}.card,.section{box-shadow:none;break-inside:avoid}th{position:static}.status{background:#fff}}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div>
+      <h1>🎭 Bilan de la soirée</h1>
+      <div class="sub">Réservations, paiements, entrées scannées et ventes sur place. Cette page est en lecture seule : elle ne modifie aucune réservation.</div>
+    </div>
+    <div class="actions">
+      <button id="refreshBtn">🔄 Actualiser</button>
+      <button id="copyBtn" class="secondary">📋 Copier le compte-rendu</button>
+      <button id="csvBtn" class="secondary">📤 Export CSV</button>
+      <button class="print" onclick="window.print()">🖨️ Imprimer / PDF</button>
+    </div>
+  </div>
+
+  <div id="status" class="status">Chargement des données…</div>
+
+  <div class="grid">
+    <div class="card rose"><div class="k">Places réservées</div><div id="reservedSeats" class="v">—</div><div id="reservedRes" class="small">—</div></div>
+    <div class="card green"><div class="k">Entrées constatées</div><div id="presentSeats" class="v">—</div><div id="attendanceRate" class="small">—</div></div>
+    <div class="card orange"><div class="k">Non scannées / absentes possibles</div><div id="absentSeats" class="v">—</div><div class="small">hors ventes sur place</div></div>
+    <div class="card violet"><div class="k">Ventes sur place</div><div id="walkInSeats" class="v">—</div><div id="walkInAmount" class="small">—</div></div>
+
+    <div class="card green"><div class="k">Places marquées payées</div><div id="paidSeats" class="v">—</div><div id="paidAmount" class="small">—</div></div>
+    <div class="card red"><div class="k">Places encore marquées impayées</div><div id="unpaidSeats" class="v">—</div><div id="unpaidAmount" class="small">—</div></div>
+    <div class="card orange"><div class="k">Impayées mais scannées</div><div id="unpaidScannedSeats" class="v">—</div><div id="unpaidScannedRes" class="small">—</div></div>
+    <div class="card"><div class="k">Places gratuites / Octobre Rose</div><div id="freeSeats" class="v">—</div><div id="freeBreakdown" class="small">—</div></div>
+  </div>
+
+  <div class="section">
+    <h2>📌 Lecture du bilan</h2>
+    <div class="note" id="interpretation">Calcul en cours…</div>
+  </div>
+
+  <div class="section">
+    <h2>📝 Compte-rendu automatique</h2>
+    <div id="summaryText" class="summaryText">Calcul en cours…</div>
+  </div>
+
+  <div class="section">
+    <h2>⚠️ Réservations à vérifier en priorité</h2>
+    <div class="sub" style="margin-bottom:8px">Ce sont les réservations encore marquées impayées alors qu'au moins une entrée a été scannée.</div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Nom</th><th>Places</th><th class="center">Entrées</th><th class="right">Montant réservation</th><th>Observation</th></tr></thead>
+      <tbody id="toCheckBody"></tbody>
+    </table></div>
+  </div>
+
+  <div class="section">
+    <h2>📋 Détail par réservation</h2>
+    <div class="filters">
+      <button data-filter="all" class="active">Toutes</button>
+      <button data-filter="present">Présentes</button>
+      <button data-filter="partial">Partielles</button>
+      <button data-filter="absent">Non scannées</button>
+      <button data-filter="unpaid-scanned">Impayées + scannées</button>
+      <button data-filter="walkin">Ventes sur place</button>
+    </div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Nom</th><th>Origine</th><th class="center">Places</th><th class="center">Scans</th><th>Paiement</th><th class="right">Montant</th><th>Présence</th><th>Sièges</th></tr></thead>
+      <tbody id="detailsBody"></tbody>
+    </table></div>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+import { getDatabase, ref, get } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBzHCn3c-7oz9XyEqhQilX3bGbVJErMULw",
+  authDomain: "theatre-saint-martin.firebaseapp.com",
+  databaseURL: "https://theatre-saint-martin-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "theatre-saint-martin"
+};
+
+// Correct the API key to the same value used by the existing scanner app.
+firebaseConfig.apiKey = "AIzaSyBzHCn3c-7oz9XyEqhQilz3bGbVJErMULw";
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+let reportRows = [];
+let currentFilter = "all";
+
+const euro = n => Number(n || 0).toLocaleString("fr-FR", { style:"currency", currency:"EUR" });
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+const n = v => Number(v || 0) || 0;
+
+function groupReservations(seatsData, scansData) {
+  const groups = new Map();
+  for (const [seatId, d] of Object.entries(seatsData || {})) {
+    if (!d) continue;
+    const reservationId = String(d.reservationId || "").trim();
+    const fallback = `${String(d.email||"").toLowerCase()}__${String(d.name||"").toLowerCase()}__${String(d.phone||"")}`;
+    const key = reservationId || fallback || seatId;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        id:key,
+        reservationId,
+        name:d.name || "Sans nom",
+        email:d.email || "",
+        phone:d.phone || "",
+        paid:!!d.paid,
+        source:d.source || "reservation",
+        amount:n(d.amount),
+        nbAdult:n(d.nbAdult),
+        nbChild:n(d.nbChild),
+        nbBaby:n(d.nbBaby),
+        nbFree:n(d.nbFree),
+        nbOctoberRose:n(d.nbOctoberRose),
+        seats:[]
+      });
+    }
+    const g = groups.get(key);
+    g.seats.push(seatId);
+    g.paid = g.paid && !!d.paid;
+    if (!g.amount && d.amount) g.amount = n(d.amount);
+    for (const f of ["nbAdult","nbChild","nbBaby","nbFree","nbOctoberRose"]) if (!g[f] && d[f]) g[f] = n(d[f]);
+    if (!g.source && d.source) g.source = d.source;
+  }
+
+  const rows = [];
+  for (const g of groups.values()) {
+    const seatCount = g.seats.length;
+    const scanObj = (scansData || {})[g.reservationId || g.id] || {};
+    const scanCountRaw = Math.max(0, n(scanObj.count));
+    const scanCount = Math.min(scanCountRaw, seatCount || scanCountRaw);
+    const walkIn = g.source === "vente_sur_place" || String(g.name).trim().toUpperCase() === "VENTE SUR PLACE";
+    // Une vente sur place correspond à des personnes physiquement présentes au guichet.
+    const presentCount = walkIn ? seatCount : scanCount;
+    const absentCount = walkIn ? 0 : Math.max(0, seatCount - scanCount);
+    const presence = walkIn ? "walkin" : (scanCount >= seatCount && seatCount > 0 ? "present" : scanCount > 0 ? "partial" : "absent");
+    rows.push({...g, seatCount, scanCount, scanCountRaw, presentCount, absentCount, walkIn, presence, lastScan:n(scanObj.lastScan)});
+  }
+  return rows.sort((a,b) => String(a.name).localeCompare(String(b.name), "fr", { sensitivity:"base" }));
+}
+
+function summarize(rows) {
+  const totalSeats = rows.reduce((s,r)=>s+r.seatCount,0);
+  const totalReservations = rows.length;
+  const walkInRows = rows.filter(r=>r.walkIn);
+  const walkInSeats = walkInRows.reduce((s,r)=>s+r.seatCount,0);
+  const walkInAmount = walkInRows.reduce((s,r)=>s+r.amount,0);
+  const presentSeats = rows.reduce((s,r)=>s+r.presentCount,0);
+  const absentSeats = rows.reduce((s,r)=>s+r.absentCount,0);
+  const paidRows = rows.filter(r=>r.paid);
+  const unpaidRows = rows.filter(r=>!r.paid && r.amount > 0);
+  const paidSeats = paidRows.reduce((s,r)=>s+r.seatCount,0);
+  const unpaidSeats = unpaidRows.reduce((s,r)=>s+r.seatCount,0);
+  const paidAmount = paidRows.reduce((s,r)=>s+r.amount,0);
+  const unpaidAmount = unpaidRows.reduce((s,r)=>s+r.amount,0);
+  const unpaidScannedRows = unpaidRows.filter(r=>r.scanCount>0);
+  const unpaidScannedSeats = unpaidScannedRows.reduce((s,r)=>s+r.scanCount,0);
+  const free = rows.reduce((s,r)=>s+r.nbFree+r.nbBaby,0);
+  const october = rows.reduce((s,r)=>s+r.nbOctoberRose,0);
+  const attendanceRate = totalSeats ? Math.round((presentSeats/totalSeats)*1000)/10 : 0;
+  return {totalSeats,totalReservations,walkInSeats,walkInAmount,presentSeats,absentSeats,paidSeats,unpaidSeats,paidAmount,unpaidAmount,unpaidScannedRows,unpaidScannedSeats,free,october,attendanceRate};
+}
+
+function tag(text, cls){ return `<span class="tag ${cls}">${esc(text)}</span>`; }
+function presenceLabel(r){
+  if (r.walkIn) return tag("Vente sur place — présente","walkin");
+  if (r.presence === "present") return tag("Présente","present");
+  if (r.presence === "partial") return tag("Présence partielle","partial");
+  return tag("Non scannée","absent");
+}
+function paymentLabel(r){
+  if (r.amount <= 0) return tag("Gratuit","attention");
+  return r.paid ? tag("Payé","paid") : tag("Impayé dans l'application","unpaid");
+}
+
+function buildSummaryText(s) {
+  const checked = s.unpaidScannedRows.length;
+  return `BILAN DE LA SOIRÉE\n\n`+
+    `• ${s.totalSeats} place(s) enregistrée(s) au total, répartie(s) sur ${s.totalReservations} réservation(s).\n`+
+    `• ${s.presentSeats} entrée(s) constatée(s), soit environ ${s.attendanceRate.toLocaleString("fr-FR")} % des places enregistrées.\n`+
+    `• ${s.absentSeats} place(s) n'ont pas été scannée(s) et peuvent correspondre à des absences ou à des entrées non scannées.\n`+
+    `• ${s.walkInSeats} place(s) ont été vendue(s) sur place pour ${euro(s.walkInAmount)}. Elles sont comptées comme présentes.\n`+
+    `• ${s.paidSeats} place(s) sont actuellement rattachées à des réservations marquées payées, pour ${euro(s.paidAmount)}.\n`+
+    `• ${s.unpaidSeats} place(s) restent rattachées à des réservations marquées impayées, pour ${euro(s.unpaidAmount)}.\n`+
+    `• Parmi elles, ${s.unpaidScannedSeats} entrée(s) ont pourtant été scannée(s), sur ${checked} réservation(s) : ce sont les paiements à vérifier/régulariser en priorité.\n`+
+    `• Places gratuites / jeunes enfants : ${s.free}. Octobre Rose : ${s.october}.\n\n`+
+    `Important : un scan prouve une entrée enregistrée par le scanner. Une absence de scan ne prouve pas à 100 % une absence si une personne a pu entrer sans être scannée.`;
+}
+
+function render(rows) {
+  reportRows = rows;
+  const s = summarize(rows);
+  document.getElementById("reservedSeats").textContent = s.totalSeats;
+  document.getElementById("reservedRes").textContent = `${s.totalReservations} réservation(s)`;
+  document.getElementById("presentSeats").textContent = s.presentSeats;
+  document.getElementById("attendanceRate").textContent = `${s.attendanceRate.toLocaleString("fr-FR")} % de présence constatée`;
+  document.getElementById("absentSeats").textContent = s.absentSeats;
+  document.getElementById("walkInSeats").textContent = s.walkInSeats;
+  document.getElementById("walkInAmount").textContent = euro(s.walkInAmount);
+  document.getElementById("paidSeats").textContent = s.paidSeats;
+  document.getElementById("paidAmount").textContent = euro(s.paidAmount);
+  document.getElementById("unpaidSeats").textContent = s.unpaidSeats;
+  document.getElementById("unpaidAmount").textContent = euro(s.unpaidAmount);
+  document.getElementById("unpaidScannedSeats").textContent = s.unpaidScannedSeats;
+  document.getElementById("unpaidScannedRes").textContent = `${s.unpaidScannedRows.length} réservation(s) à vérifier`;
+  document.getElementById("freeSeats").textContent = s.free + s.october;
+  document.getElementById("freeBreakdown").textContent = `${s.free} gratuit(s) / jeune(s) enfant(s) · ${s.october} Octobre Rose`;
+
+  document.getElementById("interpretation").innerHTML = s.unpaidScannedRows.length
+    ? `Le point principal est clair : <strong>${s.unpaidScannedRows.length} réservation(s) encore marquée(s) impayée(s) ont pourtant été scannée(s)</strong>. Elles ne doivent pas être mélangées avec les réservations impayées qui n'ont jamais été scannées. Les ventes sur place sont comptées comme présentes et payées.`
+    : `Aucune réservation encore marquée impayée n'a de scan enregistré. Les ventes sur place sont comptées comme présentes et payées.`;
+
+  document.getElementById("summaryText").textContent = buildSummaryText(s);
+
+  const checkBody = document.getElementById("toCheckBody");
+  checkBody.innerHTML = "";
+  if (!s.unpaidScannedRows.length) {
+    checkBody.innerHTML = `<tr><td colspan="5">Aucune réservation à régulariser selon les scans.</td></tr>`;
+  } else {
+    for (const r of s.unpaidScannedRows) {
+      const obs = r.scanCount >= r.seatCount ? "Toute la réservation a été scannée" : `${r.scanCount} entrée(s) sur ${r.seatCount} — présence partielle`;
+      checkBody.insertAdjacentHTML("beforeend", `<tr><td><strong>${esc(r.name)}</strong></td><td>${esc(r.seats.join(", "))}</td><td class="center">${r.scanCount}/${r.seatCount}</td><td class="right">${euro(r.amount)}</td><td>${tag(obs,"attention")}</td></tr>`);
+    }
+  }
+  renderDetails();
+}
+
+function renderDetails(){
+  const body = document.getElementById("detailsBody");
+  body.innerHTML = "";
+  let rows = reportRows;
+  if (currentFilter === "present") rows = rows.filter(r=>r.presence==="present");
+  if (currentFilter === "partial") rows = rows.filter(r=>r.presence==="partial");
+  if (currentFilter === "absent") rows = rows.filter(r=>r.presence==="absent");
+  if (currentFilter === "unpaid-scanned") rows = rows.filter(r=>!r.paid && r.amount>0 && r.scanCount>0);
+  if (currentFilter === "walkin") rows = rows.filter(r=>r.walkIn);
+  for (const r of rows) {
+    const origin = r.walkIn ? tag("Sur place","walkin") : (r.source === "public_request" ? "Réservation publique" : "Réservation");
+    body.insertAdjacentHTML("beforeend", `<tr data-presence="${r.presence}"><td><strong>${esc(r.name)}</strong></td><td>${origin}</td><td class="center">${r.seatCount}</td><td class="center">${r.walkIn ? "—" : `${r.scanCount}/${r.seatCount}`}</td><td>${paymentLabel(r)}</td><td class="right nowrap">${euro(r.amount)}</td><td>${presenceLabel(r)}</td><td>${esc(r.seats.join(", "))}</td></tr>`);
+  }
+  if (!rows.length) body.innerHTML = `<tr><td colspan="8">Aucune réservation dans ce filtre.</td></tr>`;
+}
+
+async function loadData(){
+  const status = document.getElementById("status");
+  status.textContent = "🔄 Chargement des réservations et des scans…";
+  try {
+    const [seatSnap, scanSnap] = await Promise.all([get(ref(db,"seats")), get(ref(db,"scans"))]);
+    const seats = seatSnap.exists() ? (seatSnap.val() || {}) : {};
+    const scans = scanSnap.exists() ? (scanSnap.val() || {}) : {};
+    const rows = groupReservations(seats, scans);
+    render(rows);
+    const now = new Date().toLocaleString("fr-FR");
+    status.innerHTML = `✅ Bilan calculé à <strong>${esc(now)}</strong> à partir de Firebase. Aucune donnée n'a été modifiée.`;
+  } catch(err) {
+    console.error(err);
+    status.textContent = "❌ Impossible de charger les données Firebase. Vérifie la connexion Internet et recharge la page.";
+  }
+}
+
+function downloadCsv(){
+  const headers = ["Nom","Origine","Places","Scans","Payé","Montant","Présence","Sièges"];
+  const lines = [headers];
+  for (const r of reportRows) lines.push([
+    r.name,
+    r.walkIn ? "Vente sur place" : r.source,
+    r.seatCount,
+    r.walkIn ? "" : r.scanCount,
+    r.paid ? "Oui" : "Non",
+    r.amount.toFixed(2).replace(".",","),
+    r.walkIn ? "Présente - vente sur place" : r.presence,
+    r.seats.join(" | ")
+  ]);
+  const csv = lines.map(row => row.map(v => `"${String(v??"").replace(/"/g,'""')}"`).join(";")).join("\n");
+  const blob = new Blob(["\ufeff"+csv], {type:"text/csv;charset=utf-8"});
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "bilan-soiree-reservations.csv"; a.click(); URL.revokeObjectURL(a.href);
+}
+
+for (const btn of document.querySelectorAll("[data-filter]")) btn.addEventListener("click", () => {
+  currentFilter = btn.dataset.filter;
+  document.querySelectorAll("[data-filter]").forEach(b=>b.classList.toggle("active", b===btn));
+  renderDetails();
+});
+
+document.getElementById("refreshBtn").addEventListener("click", loadData);
+document.getElementById("copyBtn").addEventListener("click", async () => {
+  const txt = document.getElementById("summaryText").textContent;
+  try { await navigator.clipboard.writeText(txt); document.getElementById("copyBtn").textContent = "✅ Copié"; setTimeout(()=>document.getElementById("copyBtn").textContent="📋 Copier le compte-rendu",1200); }
+  catch { alert("Copie automatique impossible. Sélectionne le texte du compte-rendu."); }
+});
+document.getElementById("csvBtn").addEventListener("click", downloadCsv);
+loadData();
+</script>
+</body>
+</html>
