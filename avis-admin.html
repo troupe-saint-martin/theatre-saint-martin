@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Avis reçus — Troupe Saint-Martin</title>
+  <style>
+    :root{
+      --bg:#f7f3f0;--card:#fff;--ink:#2b211d;--muted:#746861;--line:#e7ddd8;
+      --rose:#9b5367;--gold:#b36b00;--green:#2f6d52;--blue:#315f78;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--ink)}
+    .wrap{max-width:920px;margin:auto;padding:18px}
+    .top{display:flex;gap:12px;justify-content:space-between;align-items:flex-start;flex-wrap:wrap}
+    h1{margin:0 0 5px;font-size:1.7rem}
+    .sub{color:var(--muted);font-size:.94rem;line-height:1.4}
+    .actions{display:flex;gap:8px;flex-wrap:wrap}
+    button,a.btn{border:0;border-radius:8px;padding:10px 13px;font-weight:800;cursor:pointer;text-decoration:none;display:inline-block}
+    button{background:var(--blue);color:#fff}
+    a.btn{background:#6c625d;color:#fff}
+    .stats{background:#fff;border:1px solid var(--line);padding:13px 14px;margin:15px 0;border-radius:10px;font-weight:800}
+    .list{display:grid;gap:10px}
+    .review{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+    .review-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap}
+    .name{font-size:1.05rem;font-weight:900}
+    .stars{color:var(--gold);font-size:1.05rem;letter-spacing:1px;font-weight:900}
+    .comment{white-space:pre-wrap;line-height:1.5;margin-top:9px}
+    .date{font-size:.78rem;color:#8b807a;margin-top:9px}
+    .empty,.error{background:#fff;border:1px solid var(--line);padding:16px;border-radius:10px;color:var(--muted)}
+    .error{color:#9a3131}
+    @media(max-width:600px){.wrap{padding:10px}h1{font-size:1.45rem}}
+  </style>
+</head>
+<body>
+  <div class="wrap" id="app" style="display:none;">
+    <div class="top">
+      <div>
+        <h1>⭐ Avis reçus</h1>
+        <div class="sub">Page réservée à la troupe. Les spectateurs ne voient jamais cette liste.</div>
+      </div>
+      <div class="actions">
+        <button id="refreshBtn" type="button">🔄 Actualiser</button>
+        <a class="btn" href="index.html">🏠 Tableau de bord</a>
+      </div>
+    </div>
+
+    <div id="stats" class="stats">Chargement…</div>
+    <div id="reviewList" class="list"></div>
+  </div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+import { getDatabase, ref, get } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js";
+
+const ADMIN_AUTO_KEY = "ADMIN_AUTO_LOGIN";
+const ADMIN_PASSWORD = "admin123";
+
+function requireAdminAccess() {
+  if (localStorage.getItem(ADMIN_AUTO_KEY) === "true") return true;
+
+  const password = prompt("Accès réservé à la troupe — mot de passe admin :");
+  if (password !== ADMIN_PASSWORD) {
+    document.body.innerHTML = `
+      <div style="font-family:Arial,sans-serif;max-width:500px;margin:70px auto;padding:20px;text-align:center;">
+        <h2>🔒 Accès réservé</h2>
+        <p>Cette page est réservée à la Troupe Saint-Martin.</p>
+        <a href="index.html" style="display:inline-block;margin-top:10px;padding:10px 14px;background:#6c625d;color:white;text-decoration:none;border-radius:8px;font-weight:700;">Retour</a>
+      </div>`;
+    return false;
+  }
+
+  const remember = confirm("Mémoriser cet appareil en mode admin ?");
+  if (remember) localStorage.setItem(ADMIN_AUTO_KEY, "true");
+  return true;
+}
+
+if (!requireAdminAccess()) {
+  throw new Error("Accès admin refusé");
+}
+
+document.getElementById("app").style.display = "block";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBzHCn3c-7oz9XyEqhQilz3bGbVJErMULw",
+  authDomain: "theatre-saint-martin.firebaseapp.com",
+  databaseURL: "https://theatre-saint-martin-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "theatre-saint-martin"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+const REVIEWS_PATH = "spectacles/amies_2026_10_11/reviews";
+
+const stats = document.getElementById("stats");
+const reviewList = document.getElementById("reviewList");
+const refreshBtn = document.getElementById("refreshBtn");
+
+function esc(value) {
+  return String(value ?? "").replace(/[&<>"']/g, c => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
+  }[c]));
+}
+
+async function loadReviews() {
+  stats.textContent = "Chargement des avis…";
+  reviewList.innerHTML = "";
+
+  try {
+    const snap = await get(ref(db, REVIEWS_PATH));
+    const reviews = snap.exists()
+      ? Object.entries(snap.val() || {}).map(([id, value]) => ({ id, ...(value || {}) }))
+      : [];
+
+    reviews.sort((a,b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+
+    const rated = reviews.filter(r => Number(r.rating) >= 1 && Number(r.rating) <= 5);
+    const average = rated.length
+      ? rated.reduce((sum,r) => sum + Number(r.rating || 0), 0) / rated.length
+      : 0;
+
+    stats.innerHTML = reviews.length
+      ? `<strong>${reviews.length} avis reçu${reviews.length > 1 ? "s" : ""}</strong> · moyenne <strong>${average.toFixed(1).replace(".", ",")}/5</strong>`
+      : "Aucun avis reçu pour le moment.";
+
+    if (!reviews.length) {
+      reviewList.innerHTML = `<div class="empty">Les avis envoyés depuis la page publique apparaîtront ici automatiquement.</div>`;
+      return;
+    }
+
+    reviewList.innerHTML = reviews.map(r => {
+      const rating = Math.max(0, Math.min(5, Number(r.rating || 0)));
+      const stars = "★".repeat(rating) + "☆".repeat(5 - rating);
+      const date = r.createdAt ? new Date(r.createdAt).toLocaleString("fr-FR") : "";
+      return `
+        <article class="review">
+          <div class="review-head">
+            <div class="name">${esc(r.name || "Anonyme")}</div>
+            <div class="stars">${stars}</div>
+          </div>
+          <div class="comment">${esc(r.comment || "")}</div>
+          ${date ? `<div class="date">${esc(date)}</div>` : ""}
+        </article>`;
+    }).join("");
+  } catch (err) {
+    console.error(err);
+    stats.textContent = "Erreur";
+    reviewList.innerHTML = `<div class="error">❌ Impossible de charger les avis. Vérifie la connexion Internet puis actualise.</div>`;
+  }
+}
+
+refreshBtn.addEventListener("click", loadReviews);
+loadReviews();
+</script>
+</body>
+</html>
