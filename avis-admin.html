@@ -35,11 +35,11 @@
   </style>
 </head>
 <body>
-  <div class="wrap" id="app" style="display:none;">
+  <div class="wrap" id="app">
     <div class="top">
       <div>
         <h1>⭐ Avis reçus</h1>
-        <div class="sub">Page réservée à la troupe. Les spectateurs ne voient jamais cette liste.</div>
+        <div class="sub">Lien à partager avec les membres de la troupe pour lire les avis reçus.</div>
       </div>
       <div class="actions">
         <button id="refreshBtn" type="button">🔄 Actualiser</button>
@@ -54,34 +54,6 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
 import { getDatabase, ref, get, set } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js";
-
-const ADMIN_AUTO_KEY = "ADMIN_AUTO_LOGIN";
-const ADMIN_PASSWORD = "admin123";
-
-function requireAdminAccess() {
-  if (localStorage.getItem(ADMIN_AUTO_KEY) === "true") return true;
-
-  const password = prompt("Accès réservé à la troupe — mot de passe admin :");
-  if (password !== ADMIN_PASSWORD) {
-    document.body.innerHTML = `
-      <div style="font-family:Arial,sans-serif;max-width:500px;margin:70px auto;padding:20px;text-align:center;">
-        <h2>🔒 Accès réservé</h2>
-        <p>Cette page est réservée à la Troupe Saint-Martin.</p>
-        <a href="index.html" style="display:inline-block;margin-top:10px;padding:10px 14px;background:#6c625d;color:white;text-decoration:none;border-radius:8px;font-weight:700;">Retour</a>
-      </div>`;
-    return false;
-  }
-
-  const remember = confirm("Mémoriser cet appareil en mode admin ?");
-  if (remember) localStorage.setItem(ADMIN_AUTO_KEY, "true");
-  return true;
-}
-
-if (!requireAdminAccess()) {
-  throw new Error("Accès admin refusé");
-}
-
-document.getElementById("app").style.display = "block";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBzHCn3c-7oz9XyEqhQilz3bGbVJErMULw",
