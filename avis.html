@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Votre avis — Troupe Saint-Martin</title>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Arial,Helvetica,sans-serif;background:linear-gradient(180deg,#f8edf0 0%,#f7f3f0 100%);color:#302326;min-height:100vh;padding:20px}
+    .card{max-width:620px;margin:20px auto;background:#fff;border:1px solid #ead9de;box-shadow:0 8px 24px rgba(60,30,40,.08);padding:24px}
+    h1{text-align:center;margin:0 0 8px;color:#84485a;font-size:1.75rem}
+    .intro{text-align:center;color:#6f6065;line-height:1.5;margin:0 0 22px}
+    label{display:block;font-weight:700;margin:14px 0 6px}
+    input,textarea{width:100%;padding:12px;border:1px solid #cfc4c7;font:inherit;background:#fff}
+    textarea{min-height:150px;resize:vertical;line-height:1.45}
+    .stars{display:flex;justify-content:center;gap:6px;margin:8px 0 14px}
+    .star{border:0;background:transparent;color:#d1c2a0;font-size:38px;line-height:1;cursor:pointer;padding:2px}
+    .star.active{color:#d99b21}
+    .rating-label{text-align:center;color:#6d6265;font-size:.9rem;min-height:20px}
+    .send{width:100%;margin-top:18px;border:0;background:#8f4b5b;color:#fff;padding:13px;font-weight:800;font-size:1rem;cursor:pointer}
+    .send:disabled{opacity:.55;cursor:wait}
+    .msg{margin-top:14px;padding:11px;display:none;line-height:1.45}
+    .ok{display:block;background:#e9f5ed;border:1px solid #b7d8c2;color:#245d3b}
+    .err{display:block;background:#fdeaea;border:1px solid #edbcbc;color:#8c3030}
+    .foot{text-align:center;color:#8c7b80;font-size:.8rem;margin-top:18px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>⭐ Votre avis nous intéresse</h1>
+    <p class="intro">Merci d'avoir soutenu la Troupe Saint-Martin. Si vous avez une minute, dites-nous simplement ce que vous avez pensé de notre représentation.</p>
+
+    <form id="reviewForm">
+      <label for="name">Votre nom</label>
+      <input id="name" maxlength="80" autocomplete="name" required placeholder="Nom ou prénom">
+
+      <label>Votre note</label>
+      <div class="stars" id="stars" aria-label="Note sur 5">
+        <button type="button" class="star" data-rating="1" aria-label="1 étoile">★</button>
+        <button type="button" class="star" data-rating="2" aria-label="2 étoiles">★</button>
+        <button type="button" class="star" data-rating="3" aria-label="3 étoiles">★</button>
+        <button type="button" class="star" data-rating="4" aria-label="4 étoiles">★</button>
+        <button type="button" class="star" data-rating="5" aria-label="5 étoiles">★</button>
+      </div>
+      <div id="ratingLabel" class="rating-label">Choisissez de 1 à 5 étoiles</div>
+
+      <label for="comment">Votre commentaire</label>
+      <textarea id="comment" maxlength="1200" required placeholder="Votre avis en quelques mots…"></textarea>
+
+      <button id="sendBtn" class="send" type="submit">Envoyer mon avis</button>
+      <div id="message" class="msg"></div>
+    </form>
+
+    <div class="foot">Votre avis est transmis à la Troupe Saint-Martin.</div>
+  </div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+import { getDatabase, ref, set } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBzHCn3c-7oz9XyEqhQilz3bGbVJErMULw",
+  authDomain: "theatre-saint-martin.firebaseapp.com",
+  databaseURL: "https://theatre-saint-martin-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "theatre-saint-martin"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+const REVIEWS_PATH = "spectacles/amies_2026_10_11/reviews";
+
+const form = document.getElementById("reviewForm");
+const stars = [...document.querySelectorAll(".star")];
+const ratingLabel = document.getElementById("ratingLabel");
+const sendBtn = document.getElementById("sendBtn");
+const message = document.getElementById("message");
+let rating = 0;
+
+function paintStars() {
+  stars.forEach(star => star.classList.toggle("active", Number(star.dataset.rating) <= rating));
+  ratingLabel.textContent = rating ? `${rating}/5` : "Choisissez de 1 à 5 étoiles";
+}
+
+stars.forEach(star => star.addEventListener("click", () => {
+  rating = Number(star.dataset.rating || 0);
+  paintStars();
+}));
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  message.className = "msg";
+  message.textContent = "";
+
+  const name = document.getElementById("name").value.trim();
+  const comment = document.getElementById("comment").value.trim();
+
+  if (!name) return showError("Indiquez votre nom ou votre prénom.");
+  if (!rating) return showError("Choisissez une note de 1 à 5 étoiles.");
+  if (!comment) return showError("Écrivez un petit commentaire.");
+
+  sendBtn.disabled = true;
+  sendBtn.textContent = "Envoi…";
+
+  try {
+    const id = (crypto && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    await set(ref(db, `${REVIEWS_PATH}/${id}`), {
+      name,
+      rating,
+      comment,
+      createdAt: new Date().toISOString()
+    });
+
+    form.reset();
+    rating = 0;
+    paintStars();
+    message.className = "msg ok";
+    message.innerHTML = "✅ Merci beaucoup. Votre avis a bien été transmis à la troupe ❤️";
+  } catch (err) {
+    console.error(err);
+    showError("Impossible d'envoyer votre avis pour le moment. Réessayez dans quelques instants.");
+  } finally {
+    sendBtn.disabled = false;
+    sendBtn.textContent = "Envoyer mon avis";
+  }
+});
+
+function showError(text) {
+  message.className = "msg err";
+  message.textContent = text;
+}
+</script>
+</body>
+</html>
