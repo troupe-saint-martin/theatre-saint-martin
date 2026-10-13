@@ -6290,6 +6290,9 @@ const reviewOpenPublicBtn = document.getElementById("reviewOpenPublicBtn");
 const reviewRefreshBtn = document.getElementById("reviewRefreshBtn");
 const reviewStats = document.getElementById("reviewStats");
 const reviewList = document.getElementById("reviewList");
+const reviewTestPhone = document.getElementById("reviewTestPhone");
+const reviewOpenTestSmsBtn = document.getElementById("reviewOpenTestSmsBtn");
+const REVIEW_TEST_PHONE_KEY = "SPECTATOR_REVIEW_TEST_PHONE";
 
 let reviewSmsContacts = [];
 let reviewSmsSent = {};
@@ -6331,8 +6334,28 @@ function collectUniqueReviewContacts() {
   );
 }
 
-function getDefaultReviewSmsText() {
-  return `Bonjour,\n\nMerci pour votre soutien à la Troupe Saint-Martin ❤️\nVotre avis sur notre représentation nous ferait très plaisir. Cela prend une minute :\n${PUBLIC_REVIEW_URL}\n\nMerci encore et à bientôt !\nLa Troupe Saint-Martin`;
+function getDefaultReviewSmsText(reviewUrl = PUBLIC_REVIEW_URL) {
+  return `Bonjour,\n\nMerci pour votre soutien à la Troupe Saint-Martin ❤️\nVotre avis sur notre représentation nous ferait très plaisir. Cela prend une minute :\n${reviewUrl}\n\nMerci encore et à bientôt !\nLa Troupe Saint-Martin`;
+}
+
+function openReviewTestSms() {
+  const phone = normalizeReviewPhone(reviewTestPhone?.value || "");
+  if (!/^0\d{9}$/.test(phone)) {
+    alert("Entre un numéro de téléphone français valide pour le test (10 chiffres).");
+    reviewTestPhone?.focus();
+    return;
+  }
+
+  localStorage.setItem(REVIEW_TEST_PHONE_KEY, phone);
+
+  const testUrl = `${PUBLIC_REVIEW_URL}?test=1`;
+  const currentText = String(reviewSmsText?.value || "").trim() || getDefaultReviewSmsText();
+  const body = currentText.includes(PUBLIC_REVIEW_URL)
+    ? currentText.replaceAll(PUBLIC_REVIEW_URL, testUrl)
+    : `${currentText}\n\n${testUrl}`;
+
+  // Important : ce test n'est jamais enregistré comme SMS envoyé dans la vraie campagne.
+  window.location.href = `sms:${cleanSmsPhone(phone)}?body=${encodeURIComponent(body)}`;
 }
 
 function getPendingReviewContacts() {
@@ -6426,14 +6449,17 @@ async function loadSpectatorReviews() {
 
     reviews.sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
 
-    const rated = reviews.filter(r => Number(r.rating) >= 1 && Number(r.rating) <= 5);
+    const realReviews = reviews.filter(r => r.test !== true);
+    const testReviews = reviews.filter(r => r.test === true);
+    const rated = realReviews.filter(r => Number(r.rating) >= 1 && Number(r.rating) <= 5);
     const average = rated.length
       ? rated.reduce((sum, r) => sum + Number(r.rating || 0), 0) / rated.length
       : 0;
 
-    reviewStats.innerHTML = reviews.length
-      ? `<strong>${reviews.length} avis</strong> · moyenne <strong>${average.toFixed(1).replace(".", ",")}/5</strong>`
-      : `<strong>Aucun avis reçu pour le moment.</strong>`;
+    const realSummary = realReviews.length
+      ? `<strong>${realReviews.length} avis réel${realReviews.length > 1 ? "s" : ""}</strong> · moyenne <strong>${average.toFixed(1).replace(".", ",")}/5</strong>`
+      : `<strong>Aucun avis réel reçu pour le moment.</strong>`;
+    reviewStats.innerHTML = realSummary + (testReviews.length ? ` · <strong>${testReviews.length} test${testReviews.length > 1 ? "s" : ""}</strong>` : "");
 
     if (!reviews.length) {
       reviewList.innerHTML = `<div style="padding:10px;color:#666;">Les avis reçus apparaîtront ici.</div>`;
@@ -6443,16 +6469,34 @@ async function loadSpectatorReviews() {
     reviewList.innerHTML = reviews.map(r => {
       const stars = "★".repeat(Math.max(0, Math.min(5, Number(r.rating || 0)))) + "☆".repeat(Math.max(0, 5 - Math.min(5, Number(r.rating || 0))));
       const date = r.createdAt ? new Date(r.createdAt).toLocaleString("fr-FR") : "";
+      const isTest = r.test === true;
       return `
-        <div style="border:1px solid #eadfe2;background:#fff;padding:10px 12px;margin-bottom:8px;text-align:left;">
+        <div style="border:1px solid ${isTest ? "#e3c55c" : "#eadfe2"};background:${isTest ? "#fffaf0" : "#fff"};padding:10px 12px;margin-bottom:8px;text-align:left;">
           <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;">
-            <strong>${escapeHTML(r.name || "Anonyme")}</strong>
+            <strong>${escapeHTML(r.name || "Anonyme")} ${isTest ? '<span style="background:#f0c94d;color:#4a3900;padding:2px 6px;font-size:11px;margin-left:6px;">TEST</span>' : ""}</strong>
             <span style="color:#b36b00;font-weight:800;letter-spacing:1px;">${stars}</span>
           </div>
           <div style="margin-top:7px;white-space:pre-wrap;line-height:1.45;">${escapeHTML(r.comment || "")}</div>
           ${date ? `<div style="font-size:11px;color:#888;margin-top:7px;">${escapeHTML(date)}</div>` : ""}
+          ${isTest ? `<button type="button" data-delete-test-review="${escapeHTML(r.id)}" style="margin-top:8px;background:#8d4b3f;padding:6px 9px;font-size:12px;">🗑️ Supprimer ce test</button>` : ""}
         </div>`;
     }).join("");
+
+    reviewList.querySelectorAll("[data-delete-test-review]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const id = btn.dataset.deleteTestReview;
+        if (!id || !confirm("Supprimer cet avis test ?")) return;
+        btn.disabled = true;
+        try {
+          await set(ref(db, `${SPECTATOR_REVIEWS_PATH}/${id}`), null);
+          await loadSpectatorReviews();
+        } catch (err) {
+          console.error("Suppression avis test impossible", err);
+          alert("❌ Impossible de supprimer cet avis test.");
+          btn.disabled = false;
+        }
+      });
+    });
   } catch (err) {
     console.error("Erreur chargement avis", err);
     reviewStats.textContent = "❌ Impossible de charger les avis.";
@@ -6465,6 +6509,7 @@ async function openSpectatorReviewsAdmin() {
 
   spectatorReviewsModal.classList.remove("hidden");
   if (reviewSmsText && !reviewSmsText.value.trim()) reviewSmsText.value = getDefaultReviewSmsText();
+  if (reviewTestPhone && !reviewTestPhone.value.trim()) reviewTestPhone.value = localStorage.getItem(REVIEW_TEST_PHONE_KEY) || "";
   reviewCurrentRecipient.innerHTML = "Chargement…";
 
   reviewSmsContacts = collectUniqueReviewContacts();
@@ -6484,6 +6529,10 @@ async function openSpectatorReviewsAdmin() {
 if (spectatorReviewsBtn) spectatorReviewsBtn.addEventListener("click", openSpectatorReviewsAdmin);
 if (reviewCloseBtn) reviewCloseBtn.addEventListener("click", () => spectatorReviewsModal?.classList.add("hidden"));
 if (reviewOpenPublicBtn) reviewOpenPublicBtn.addEventListener("click", () => window.open("avis.html", "_blank"));
+if (reviewOpenTestSmsBtn) reviewOpenTestSmsBtn.addEventListener("click", openReviewTestSms);
+if (reviewTestPhone) reviewTestPhone.addEventListener("input", () => {
+  reviewTestPhone.value = formatPhone(reviewTestPhone.value);
+});
 if (reviewOpenSmsBtn) reviewOpenSmsBtn.addEventListener("click", openCurrentReviewSms);
 if (reviewMarkSentBtn) reviewMarkSentBtn.addEventListener("click", async () => {
   reviewMarkSentBtn.disabled = true;
@@ -7322,6 +7371,17 @@ Il vous suffit de compléter le formulaire ci-dessous pour que les QR codes soie
       <p style="font-size:13px;color:#666;line-height:1.45;margin:7px 0 9px;">
         La liste est créée à partir des réservations et dédupliquée par numéro de téléphone : un même numéro ne reçoit qu'un seul SMS.
       </p>
+      <div style="background:#fffbea;border:1px solid #e8d88d;padding:10px;margin:10px 0 12px;">
+        <strong>🧪 Faire un test sur mon téléphone</strong>
+        <p style="font-size:12px;color:#6d6240;line-height:1.4;margin:5px 0 8px;">
+          Entre ton numéro puis ouvre le SMS test. Cela ne touche pas à la vraie liste et ne fait avancer aucun compteur. L'avis envoyé sera marqué TEST et pourra être supprimé ensuite.
+        </p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <input id="reviewTestPhone" inputmode="tel" autocomplete="tel" placeholder="06 00 00 00 00" style="flex:1 1 190px;min-width:170px;padding:9px;border:1px solid #cfc5a0;box-sizing:border-box;">
+          <button id="reviewOpenTestSmsBtn" type="button" style="background:#b07b16;">📱 Ouvrir le SMS test</button>
+        </div>
+      </div>
+
       <div id="reviewQueueInfo" style="font-weight:700;margin-bottom:10px;">Chargement…</div>
 
       <label for="reviewSmsText" style="font-weight:700;display:block;margin-bottom:5px;">Message SMS</label>
