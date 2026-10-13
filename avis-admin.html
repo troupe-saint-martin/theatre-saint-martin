@@ -34,6 +34,8 @@
     .hide-review{background:#6c625d}
     .delete-review{background:#9a3131}
     .hidden-tag{display:inline-block;background:#ded7d3;color:#5b514c;padding:2px 6px;font-size:.7rem;margin-left:6px;font-weight:900}
+    .facebook-select{display:flex;align-items:center;gap:7px;margin-top:10px;padding:8px 10px;background:#f6f1f3;border:1px solid #eadfe2;border-radius:8px;font-size:.86rem;font-weight:800;cursor:pointer}
+    .facebook-select input{width:18px;height:18px;accent-color:var(--rose);cursor:pointer}
     .facebook-box{display:none;background:#fff;border:1px solid var(--line);padding:14px;margin:0 0 15px;border-radius:10px}
     .facebook-box.open{display:block}
     .facebook-box h2{font-size:1.05rem;margin:0 0 8px}
@@ -149,6 +151,7 @@ async function loadReviews() {
           <div class="comment">${esc(r.comment || "")}</div>
           ${date ? `<div class="date">${esc(date)}</div>` : ""}
           ${isTest ? `<button type="button" class="delete-test" data-delete-test-review="${esc(r.id)}">🗑️ Supprimer ce test</button>` : `
+            ${r.hidden === true ? "" : `<label class="facebook-select"><input type="checkbox" data-facebook-review="${esc(r.id)}"> Inclure cet avis dans le prochain post Facebook</label>`}
             <div class="review-actions">
               <button type="button" class="hide-review" data-hide-review="${esc(r.id)}" data-hidden="${r.hidden === true ? "1" : "0"}">${r.hidden === true ? "👁️ Réafficher" : "🙈 Masquer"}</button>
               <button type="button" class="delete-review" data-delete-review="${esc(r.id)}">🗑️ Supprimer</button>
@@ -215,12 +218,14 @@ async function loadReviews() {
 }
 
 function buildFacebookPost() {
+  const selectedIds = new Set(
+    [...reviewList.querySelectorAll("[data-facebook-review]:checked")].map(input => input.dataset.facebookReview)
+  );
   const selected = currentReviews
-    .filter(r => r.test !== true && r.hidden !== true)
-    .slice(0, 6);
+    .filter(r => r.test !== true && r.hidden !== true && selectedIds.has(r.id));
 
   if (!selected.length) {
-    alert("Aucun avis visible à utiliser pour Facebook.");
+    alert("Coche d'abord le ou les avis que tu veux mettre dans le post Facebook.");
     return;
   }
 
