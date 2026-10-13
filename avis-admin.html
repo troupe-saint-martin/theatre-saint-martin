@@ -34,6 +34,13 @@
     .hide-review{background:#6c625d}
     .delete-review{background:#9a3131}
     .hidden-tag{display:inline-block;background:#ded7d3;color:#5b514c;padding:2px 6px;font-size:.7rem;margin-left:6px;font-weight:900}
+    .facebook-box{display:none;background:#fff;border:1px solid var(--line);padding:14px;margin:0 0 15px;border-radius:10px}
+    .facebook-box.open{display:block}
+    .facebook-box h2{font-size:1.05rem;margin:0 0 8px}
+    .facebook-box textarea{width:100%;min-height:260px;resize:vertical;border:1px solid var(--line);border-radius:8px;padding:11px;font:inherit;line-height:1.45;color:var(--ink);background:#fff}
+    .facebook-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px}
+    .facebook-actions .copy{background:var(--green)}
+    .facebook-actions .close{background:#6c625d}
     .empty,.error{background:#fff;border:1px solid var(--line);padding:16px;border-radius:10px;color:var(--muted)}
     .error{color:#9a3131}
     @media(max-width:600px){.wrap{padding:10px}h1{font-size:1.45rem}}
@@ -47,12 +54,22 @@
         <div class="sub">Lien à partager avec les membres de la troupe pour lire les avis reçus.</div>
       </div>
       <div class="actions">
+        <button id="facebookBtn" type="button">📘 Préparer Facebook</button>
         <button id="refreshBtn" type="button">🔄 Actualiser</button>
         <a class="btn" href="index.html">🏠 Tableau de bord</a>
       </div>
     </div>
 
     <div id="stats" class="stats">Chargement…</div>
+    <section id="facebookBox" class="facebook-box" aria-label="Publication Facebook">
+      <h2>📘 Publication Facebook prête à copier</h2>
+      <textarea id="facebookText" readonly></textarea>
+      <div class="facebook-actions">
+        <button id="copyFacebookBtn" class="copy" type="button">📋 Copier le texte</button>
+        <button id="shareFacebookBtn" type="button">📤 Partager…</button>
+        <button id="closeFacebookBtn" class="close" type="button">✖ Fermer</button>
+      </div>
+    </section>
     <div id="reviewList" class="list"></div>
   </div>
 
@@ -74,6 +91,13 @@ const REVIEWS_PATH = "spectacles/amies_2026_10_11/reviews";
 const stats = document.getElementById("stats");
 const reviewList = document.getElementById("reviewList");
 const refreshBtn = document.getElementById("refreshBtn");
+const facebookBtn = document.getElementById("facebookBtn");
+const facebookBox = document.getElementById("facebookBox");
+const facebookText = document.getElementById("facebookText");
+const copyFacebookBtn = document.getElementById("copyFacebookBtn");
+const shareFacebookBtn = document.getElementById("shareFacebookBtn");
+const closeFacebookBtn = document.getElementById("closeFacebookBtn");
+let currentReviews = [];
 
 function esc(value) {
   return String(value ?? "").replace(/[&<>"']/g, c => ({
@@ -92,6 +116,7 @@ async function loadReviews() {
       : [];
 
     reviews.sort((a,b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+    currentReviews = reviews;
 
     const realReviews = reviews.filter(r => r.test !== true);
     const testReviews = reviews.filter(r => r.test === true);
@@ -189,6 +214,73 @@ async function loadReviews() {
   }
 }
 
+function buildFacebookPost() {
+  const selected = currentReviews
+    .filter(r => r.test !== true && r.hidden !== true)
+    .slice(0, 6);
+
+  if (!selected.length) {
+    alert("Aucun avis visible à utiliser pour Facebook.");
+    return;
+  }
+
+  const blocks = selected.map(r => {
+    const rating = Math.max(0, Math.min(5, Number(r.rating || 0)));
+    const stars = "★".repeat(rating) + "☆".repeat(5 - rating);
+    const name = String(r.name || "Anonyme").trim();
+    const comment = String(r.comment || "").trim();
+    return `${stars} — ${name}\n« ${comment} »`;
+  });
+
+  facebookText.value = [
+    "🎭 Merci pour vos retours !",
+    "",
+    "Quelques avis reçus après notre représentation :",
+    "",
+    blocks.join("\n\n"),
+    "",
+    "Merci à toutes et à tous pour vos messages et votre soutien ❤️"
+  ].join("\n");
+
+  facebookBox.classList.add("open");
+  facebookBox.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function copyFacebookText() {
+  const text = facebookText.value;
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    const old = copyFacebookBtn.textContent;
+    copyFacebookBtn.textContent = "✅ Texte copié";
+    setTimeout(() => copyFacebookBtn.textContent = old, 1800);
+  } catch (err) {
+    facebookText.focus();
+    facebookText.select();
+    document.execCommand("copy");
+    alert("Texte copié.");
+  }
+}
+
+async function shareFacebookText() {
+  const text = facebookText.value;
+  if (!text) return;
+  if (navigator.share) {
+    try {
+      await navigator.share({ text });
+      return;
+    } catch (err) {
+      if (err && err.name === "AbortError") return;
+    }
+  }
+  await copyFacebookText();
+  alert("Le partage direct n'est pas disponible ici. Le texte a été copié : tu peux le coller dans Facebook.");
+}
+
+facebookBtn.addEventListener("click", buildFacebookPost);
+copyFacebookBtn.addEventListener("click", copyFacebookText);
+shareFacebookBtn.addEventListener("click", shareFacebookText);
+closeFacebookBtn.addEventListener("click", () => facebookBox.classList.remove("open"));
 refreshBtn.addEventListener("click", loadReviews);
 loadReviews();
 </script>
