@@ -29,6 +29,11 @@
     .date{font-size:.78rem;color:#8b807a;margin-top:9px}
     .test-tag{display:inline-block;background:#f0c94d;color:#4a3900;padding:2px 6px;font-size:.7rem;margin-left:6px;font-weight:900}
     .delete-test{margin-top:10px;background:#8d4b3f;padding:7px 10px;font-size:.8rem}
+    .review-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+    .review-actions button{padding:7px 10px;font-size:.8rem}
+    .hide-review{background:#6c625d}
+    .delete-review{background:#9a3131}
+    .hidden-tag{display:inline-block;background:#ded7d3;color:#5b514c;padding:2px 6px;font-size:.7rem;margin-left:6px;font-weight:900}
     .empty,.error{background:#fff;border:1px solid var(--line);padding:16px;border-radius:10px;color:var(--muted)}
     .error{color:#9a3131}
     @media(max-width:600px){.wrap{padding:10px}h1{font-size:1.45rem}}
@@ -113,12 +118,16 @@ async function loadReviews() {
       return `
         <article class="review" style="${isTest ? "border-color:#e3c55c;background:#fffaf0;" : ""}">
           <div class="review-head">
-            <div class="name">${esc(r.name || "Anonyme")}${isTest ? '<span class="test-tag">TEST</span>' : ""}</div>
+            <div class="name">${esc(r.name || "Anonyme")}${isTest ? '<span class="test-tag">TEST</span>' : ""}${!isTest && r.hidden === true ? '<span class="hidden-tag">MASQUÉ</span>' : ""}</div>
             <div class="stars">${stars}</div>
           </div>
           <div class="comment">${esc(r.comment || "")}</div>
           ${date ? `<div class="date">${esc(date)}</div>` : ""}
-          ${isTest ? `<button type="button" class="delete-test" data-delete-test-review="${esc(r.id)}">🗑️ Supprimer ce test</button>` : ""}
+          ${isTest ? `<button type="button" class="delete-test" data-delete-test-review="${esc(r.id)}">🗑️ Supprimer ce test</button>` : `
+            <div class="review-actions">
+              <button type="button" class="hide-review" data-hide-review="${esc(r.id)}" data-hidden="${r.hidden === true ? "1" : "0"}">${r.hidden === true ? "👁️ Réafficher" : "🙈 Masquer"}</button>
+              <button type="button" class="delete-review" data-delete-review="${esc(r.id)}">🗑️ Supprimer</button>
+            </div>`}
         </article>`;
     }).join("");
 
@@ -133,6 +142,42 @@ async function loadReviews() {
         } catch (err) {
           console.error(err);
           alert("❌ Impossible de supprimer cet avis test.");
+          btn.disabled = false;
+        }
+      });
+    });
+
+    reviewList.querySelectorAll("[data-hide-review]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const id = btn.dataset.hideReview;
+        if (!id) return;
+        const isHidden = btn.dataset.hidden === "1";
+        btn.disabled = true;
+        try {
+          await set(ref(db, `${REVIEWS_PATH}/${id}/hidden`), !isHidden);
+          if (!isHidden) {
+            await set(ref(db, `${REVIEWS_PATH}/${id}/published`), false);
+          }
+          await loadReviews();
+        } catch (err) {
+          console.error(err);
+          alert("❌ Impossible de modifier cet avis.");
+          btn.disabled = false;
+        }
+      });
+    });
+
+    reviewList.querySelectorAll("[data-delete-review]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const id = btn.dataset.deleteReview;
+        if (!id || !confirm("Supprimer définitivement cet avis ?\n\nCette action est irréversible.")) return;
+        btn.disabled = true;
+        try {
+          await set(ref(db, `${REVIEWS_PATH}/${id}`), null);
+          await loadReviews();
+        } catch (err) {
+          console.error(err);
+          alert("❌ Impossible de supprimer cet avis.");
           btn.disabled = false;
         }
       });
