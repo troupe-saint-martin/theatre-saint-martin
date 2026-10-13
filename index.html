@@ -436,6 +436,10 @@ h1 {
         <button id="buyTickets" type="button">🎟️ Achat tickets</button>
         <button id="scanTicket" type="button">🔍 Scanner billet</button>
       </div>
+      <div class="actions" style="padding-top:0;">
+        <button id="openReviews" type="button" style="background:linear-gradient(180deg,#8e24aa,#5e176f);">⭐ Avis spectateurs</button>
+        <button id="openEveningReport" type="button" style="background:linear-gradient(180deg,#315f78,#234456);">📊 Bilan de la soirée</button>
+      </div>
       <!-- Nouveau bouton Accueil -->
 <div style="text-align:center; margin-top:15px;">
   <a href="accueil.html"
@@ -464,6 +468,10 @@ h1 {
       <div class="walkin-line">
         <label for="walkInChildCount">Enfants 9–14 ans</label>
         <select id="walkInChildCount"></select>
+      </div>
+      <div class="walkin-line">
+        <label for="walkInFreeCount">Places gratuites</label>
+        <select id="walkInFreeCount"></select>
       </div>
 
       <p id="walkInQuickSummary">0 place — 0.00 €</p>
@@ -649,7 +657,8 @@ h1 {
     function updateWalkInQuickSummary() {
       const adults = parseInt(document.getElementById("walkInAdultCount")?.value || "0", 10) || 0;
       const children = parseInt(document.getElementById("walkInChildCount")?.value || "0", 10) || 0;
-      const total = adults + children;
+      const free = parseInt(document.getElementById("walkInFreeCount")?.value || "0", 10) || 0;
+      const total = adults + children + free;
       const amount = adults * PRICE_ADULT + children * PRICE_CHILD;
       const label = document.getElementById("walkInQuickSummary");
       if (label) label.textContent = `${total} place${total > 1 ? "s" : ""} — ${amount.toFixed(2)} €`;
@@ -658,10 +667,13 @@ h1 {
     function openWalkInQuickModal() {
       const adultSelect = document.getElementById("walkInAdultCount");
       const childSelect = document.getElementById("walkInChildCount");
+      const freeSelect = document.getElementById("walkInFreeCount");
       fillWalkInCountSelect(adultSelect);
       fillWalkInCountSelect(childSelect);
+      fillWalkInCountSelect(freeSelect);
       adultSelect.value = "0";
       childSelect.value = "0";
+      freeSelect.value = "0";
       updateWalkInQuickSummary();
       document.getElementById("walkInQuickModal").classList.remove("hidden");
     }
@@ -687,8 +699,8 @@ h1 {
       updateWalkInQuickSummary();
     }
 
-    async function commitAutomaticWalkInSale(nbAdult, nbChild, allowScattered) {
-      const totalPeople = nbAdult + nbChild;
+    async function commitAutomaticWalkInSale(nbAdult, nbChild, nbFree, allowScattered) {
+      const totalPeople = nbAdult + nbChild + nbFree;
       const amount = nbAdult * PRICE_ADULT + nbChild * PRICE_CHILD;
       const reservationId = crypto.randomUUID();
 
@@ -704,21 +716,24 @@ h1 {
 
         const nextSeats = { ...currentSeats };
         assigned.forEach((id, index) => {
+          const type = index < nbAdult
+            ? "adulte"
+            : (index < nbAdult + nbChild ? "enfant" : "gratuit");
           nextSeats[id] = {
             reservationId,
             name: "VENTE SUR PLACE",
             email: "",
             phone: "",
             paid: true,
-            free: false,
+            free: type === "gratuit",
             source: "vente_sur_place",
             nbAdult,
             nbChild,
             nbBaby: 0,
-            nbFree: 0,
+            nbFree,
             nbOctoberRose: 0,
             amount,
-            type: index < nbAdult ? "adulte" : "enfant"
+            type
           };
         });
         return nextSeats;
@@ -736,6 +751,7 @@ h1 {
 
     document.getElementById("walkInAdultCount").addEventListener("change", updateWalkInQuickSummary);
     document.getElementById("walkInChildCount").addEventListener("change", updateWalkInQuickSummary);
+    document.getElementById("walkInFreeCount").addEventListener("change", updateWalkInQuickSummary);
 
     // IMPORTANT : le bouton reste sur index.html et ouvre directement l'encart.
     document.getElementById("quickWalkIn").onclick = openWalkInQuickModal;
@@ -745,10 +761,11 @@ h1 {
       const saveBtn = document.getElementById("walkInQuickSave");
       const nbAdult = parseInt(document.getElementById("walkInAdultCount").value || "0", 10) || 0;
       const nbChild = parseInt(document.getElementById("walkInChildCount").value || "0", 10) || 0;
-      const totalPeople = nbAdult + nbChild;
+      const nbFree = parseInt(document.getElementById("walkInFreeCount").value || "0", 10) || 0;
+      const totalPeople = nbAdult + nbChild + nbFree;
 
       if (totalPeople <= 0) {
-        alert("Indique au moins 1 adulte ou 1 enfant.");
+        alert("Indique au moins 1 adulte, 1 enfant ou 1 place gratuite.");
         return;
       }
 
@@ -794,7 +811,7 @@ h1 {
           allowScattered = true;
         }
 
-        const result = await commitAutomaticWalkInSale(nbAdult, nbChild, allowScattered);
+        const result = await commitAutomaticWalkInSale(nbAdult, nbChild, nbFree, allowScattered);
         if (!result) {
           alert("⚠️ Les places viennent d'être modifiées sur un autre appareil. Rien n'a été enregistré. Réessayez simplement la vente sur place.");
           return;
@@ -802,7 +819,7 @@ h1 {
 
         closeWalkInQuickModal();
         const seatText = result.assignedIds.join(", ");
-        alert(`✅ Vente sur place enregistrée et encaissée.\n\n${totalPeople} place${totalPeople > 1 ? "s" : ""} : ${seatText}\nTotal : ${result.amount.toFixed(2)} €`);
+        alert(`✅ Vente sur place enregistrée.\n\n${totalPeople} place${totalPeople > 1 ? "s" : ""} : ${seatText}\nTotal encaissé : ${result.amount.toFixed(2)} €`);
       } catch (err) {
         console.error("Erreur vente sur place automatique", err);
         alert("❌ Impossible d'enregistrer la vente sur place. Rien n'a été modifié. Réessayez.");
@@ -814,6 +831,8 @@ h1 {
 
     document.getElementById("buyTickets").onclick = () => window.location.href = "salle.html";
     document.getElementById("scanTicket").onclick = () => window.location.href = "scanner.html";
+    document.getElementById("openReviews").onclick = () => window.location.href = "avis.html";
+    document.getElementById("openEveningReport").onclick = () => window.location.href = "bilan-soiree.html";
   </script>
 </body>
 </html>
