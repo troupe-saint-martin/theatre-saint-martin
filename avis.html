@@ -23,12 +23,15 @@
     .ok{display:block;background:#e9f5ed;border:1px solid #b7d8c2;color:#245d3b}
     .err{display:block;background:#fdeaea;border:1px solid #edbcbc;color:#8c3030}
     .foot{text-align:center;color:#8c7b80;font-size:.8rem;margin-top:18px}
+    .test-banner{background:#fff7d8;border:1px solid #e6ca65;color:#5d4a05;padding:10px 12px;margin:0 0 16px;line-height:1.4;font-weight:700;text-align:center}
+    .hidden{display:none!important}
   </style>
 </head>
 <body>
   <div class="card">
     <h1>⭐ Votre avis nous intéresse</h1>
     <p class="intro">Merci d'avoir soutenu la Troupe Saint-Martin. Si vous avez une minute, dites-nous simplement ce que vous avez pensé de notre représentation.</p>
+    <div id="testBanner" class="test-banner hidden">🧪 Mode test — cet avis sera marqué TEST dans l'espace de la troupe et pourra être supprimé.</div>
 
     <form id="reviewForm">
       <label for="name">Votre nom</label>
@@ -68,12 +71,15 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const REVIEWS_PATH = "spectacles/amies_2026_10_11/reviews";
+const isTestReview = new URLSearchParams(window.location.search).get("test") === "1";
 
 const form = document.getElementById("reviewForm");
 const stars = [...document.querySelectorAll(".star")];
 const ratingLabel = document.getElementById("ratingLabel");
 const sendBtn = document.getElementById("sendBtn");
 const message = document.getElementById("message");
+const testBanner = document.getElementById("testBanner");
+if (isTestReview) testBanner?.classList.remove("hidden");
 let rating = 0;
 
 function paintStars() {
@@ -107,6 +113,7 @@ form.addEventListener("submit", async (e) => {
       name,
       rating,
       comment,
+      test: isTestReview,
       createdAt: new Date().toISOString()
     });
 
@@ -114,7 +121,9 @@ form.addEventListener("submit", async (e) => {
     rating = 0;
     paintStars();
     message.className = "msg ok";
-    message.innerHTML = "✅ Merci beaucoup. Votre avis a bien été transmis à la troupe ❤️";
+    message.innerHTML = isTestReview
+      ? "✅ Avis TEST bien reçu. Tu peux maintenant le voir puis le supprimer dans l'espace Avis reçus."
+      : "✅ Merci beaucoup. Votre avis a bien été transmis à la troupe ❤️";
   } catch (err) {
     console.error(err);
     showError("Impossible d'envoyer votre avis pour le moment. Réessayez dans quelques instants.");
