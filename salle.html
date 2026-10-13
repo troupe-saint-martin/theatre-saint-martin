@@ -1426,6 +1426,9 @@ body {
   <button id="newPieceMailing" style="display:none;background:#8e24aa;">
     📢 Mailing nouvelle pièce
   </button>
+  <button id="spectatorReviewsBtn" type="button" style="display:none;background:#ad5d72;">
+    ⭐ Avis spectateurs
+  </button>
 	<button id="openBilletsAdmin" type="button" style="display:none;background:#3949ab;">
   🎟️ Gestion billets / SMS
 </button>
@@ -5152,6 +5155,10 @@ function toggleAdminUI() {
   if (newPieceMailingBtn) {
     newPieceMailingBtn.style.display = isAdmin ? "inline-block" : "none";
   }
+  const spectatorReviewsAdminBtn = document.getElementById("spectatorReviewsBtn");
+  if (spectatorReviewsAdminBtn) {
+    spectatorReviewsAdminBtn.style.display = isAdmin ? "inline-block" : "none";
+  }
   const billetsAdminBtn = document.getElementById("openBilletsAdmin");
   if (billetsAdminBtn) {
     billetsAdminBtn.style.display = isAdmin ? "inline-block" : "none";
@@ -6262,6 +6269,241 @@ const participantUser = {
 
 
 
+
+// ===================================================
+// ⭐ AVIS SPECTATEURS — SMS sans doublons + livre d'or admin
+// ===================================================
+const SPECTATOR_REVIEWS_PATH = "spectacles/amies_2026_10_11/reviews";
+const REVIEW_SMS_SENT_PATH = "spectacles/amies_2026_10_11/review_sms_sent";
+const PUBLIC_REVIEW_URL = "https://troupe-saint-martin.github.io/theatre-saint-martin/avis.html";
+
+const spectatorReviewsBtn = document.getElementById("spectatorReviewsBtn");
+const spectatorReviewsModal = document.getElementById("spectatorReviewsModal");
+const reviewSmsText = document.getElementById("reviewSmsText");
+const reviewQueueInfo = document.getElementById("reviewQueueInfo");
+const reviewCurrentRecipient = document.getElementById("reviewCurrentRecipient");
+const reviewOpenSmsBtn = document.getElementById("reviewOpenSmsBtn");
+const reviewMarkSentBtn = document.getElementById("reviewMarkSentBtn");
+const reviewSkipBtn = document.getElementById("reviewSkipBtn");
+const reviewCloseBtn = document.getElementById("reviewCloseBtn");
+const reviewOpenPublicBtn = document.getElementById("reviewOpenPublicBtn");
+const reviewRefreshBtn = document.getElementById("reviewRefreshBtn");
+const reviewStats = document.getElementById("reviewStats");
+const reviewList = document.getElementById("reviewList");
+
+let reviewSmsContacts = [];
+let reviewSmsSent = {};
+let reviewQueueIndex = 0;
+
+function normalizeReviewPhone(phone) {
+  let digits = String(phone || "").replace(/\D/g, "");
+  if (digits.startsWith("0033")) digits = "0" + digits.slice(4);
+  else if (digits.startsWith("33") && digits.length >= 11) digits = "0" + digits.slice(2);
+  if (digits.length > 10 && digits.startsWith("0")) digits = digits.slice(0, 10);
+  return digits;
+}
+
+function reviewPhoneKey(phone) {
+  return normalizeReviewPhone(phone);
+}
+
+function collectUniqueReviewContacts() {
+  const byPhone = new Map();
+
+  Object.values(seats || {}).forEach(data => {
+    if (!data) return;
+    if (data.source === "vente_sur_place") return;
+    if (data.source === "test_data" || String(data.reservationId || "").startsWith("test_")) return;
+
+    const phone = normalizeReviewPhone(data.phone || "");
+    if (!/^0\d{9}$/.test(phone)) return;
+
+    if (!byPhone.has(phone)) {
+      byPhone.set(phone, {
+        phone,
+        name: String(data.name || "").trim() || "Spectateur"
+      });
+    }
+  });
+
+  return Array.from(byPhone.values()).sort((a, b) =>
+    String(a.name).localeCompare(String(b.name), "fr", { sensitivity: "base" })
+  );
+}
+
+function getDefaultReviewSmsText() {
+  return `Bonjour,\n\nMerci pour votre soutien à la Troupe Saint-Martin ❤️\nVotre avis sur notre représentation nous ferait très plaisir. Cela prend une minute :\n${PUBLIC_REVIEW_URL}\n\nMerci encore et à bientôt !\nLa Troupe Saint-Martin`;
+}
+
+function getPendingReviewContacts() {
+  return reviewSmsContacts.filter(c => !reviewSmsSent[reviewPhoneKey(c.phone)]);
+}
+
+function getCurrentReviewContact() {
+  const pending = getPendingReviewContacts();
+  if (!pending.length) return null;
+  if (reviewQueueIndex >= pending.length) reviewQueueIndex = 0;
+  return pending[reviewQueueIndex] || pending[0];
+}
+
+function renderReviewQueue() {
+  const sentCount = reviewSmsContacts.filter(c => !!reviewSmsSent[reviewPhoneKey(c.phone)]).length;
+  const pending = getPendingReviewContacts();
+  const current = getCurrentReviewContact();
+
+  if (reviewQueueInfo) {
+    reviewQueueInfo.textContent = `${reviewSmsContacts.length} numéro(s) unique(s) · ${sentCount} marqué(s) envoyé(s) · ${pending.length} restant(s)`;
+  }
+
+  if (!reviewCurrentRecipient) return;
+
+  if (!reviewSmsContacts.length) {
+    reviewCurrentRecipient.innerHTML = `<strong>Aucun numéro de téléphone exploitable trouvé.</strong>`;
+    reviewOpenSmsBtn.disabled = true;
+    reviewMarkSentBtn.disabled = true;
+    reviewSkipBtn.disabled = true;
+    return;
+  }
+
+  if (!current) {
+    reviewCurrentRecipient.innerHTML = `<strong>✅ Tous les SMS de cette campagne sont marqués envoyés.</strong>`;
+    reviewOpenSmsBtn.disabled = true;
+    reviewMarkSentBtn.disabled = true;
+    reviewSkipBtn.disabled = true;
+    return;
+  }
+
+  reviewCurrentRecipient.innerHTML = `
+    <div style="font-size:13px;color:#666;margin-bottom:4px;">Destinataire suivant</div>
+    <div style="font-size:19px;font-weight:800;">${escapeHTML(current.name)}</div>
+    <div style="font-size:16px;margin-top:3px;">📱 ${escapeHTML(current.phone)}</div>
+  `;
+  reviewOpenSmsBtn.disabled = false;
+  reviewMarkSentBtn.disabled = false;
+  reviewSkipBtn.disabled = pending.length <= 1;
+}
+
+async function loadReviewSmsSentState() {
+  const snap = await get(ref(db, REVIEW_SMS_SENT_PATH));
+  reviewSmsSent = snap.exists() ? (snap.val() || {}) : {};
+}
+
+async function markCurrentReviewSmsSent() {
+  const current = getCurrentReviewContact();
+  if (!current) return;
+
+  const key = reviewPhoneKey(current.phone);
+  await set(ref(db, `${REVIEW_SMS_SENT_PATH}/${key}`), {
+    name: current.name,
+    phone: current.phone,
+    sentAt: new Date().toISOString()
+  });
+  reviewSmsSent[key] = { name: current.name, phone: current.phone, sentAt: new Date().toISOString() };
+  reviewQueueIndex = 0;
+  renderReviewQueue();
+}
+
+function openCurrentReviewSms() {
+  const current = getCurrentReviewContact();
+  if (!current) return;
+
+  const body = String(reviewSmsText?.value || "").trim() || getDefaultReviewSmsText();
+  const smsHref = `sms:${cleanSmsPhone(current.phone)}?body=${encodeURIComponent(body)}`;
+  window.location.href = smsHref;
+}
+
+async function loadSpectatorReviews() {
+  if (!reviewStats || !reviewList) return;
+
+  reviewStats.textContent = "Chargement des avis…";
+  reviewList.innerHTML = "";
+
+  try {
+    const snap = await get(ref(db, SPECTATOR_REVIEWS_PATH));
+    const reviews = snap.exists()
+      ? Object.entries(snap.val() || {}).map(([id, value]) => ({ id, ...(value || {}) }))
+      : [];
+
+    reviews.sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+
+    const rated = reviews.filter(r => Number(r.rating) >= 1 && Number(r.rating) <= 5);
+    const average = rated.length
+      ? rated.reduce((sum, r) => sum + Number(r.rating || 0), 0) / rated.length
+      : 0;
+
+    reviewStats.innerHTML = reviews.length
+      ? `<strong>${reviews.length} avis</strong> · moyenne <strong>${average.toFixed(1).replace(".", ",")}/5</strong>`
+      : `<strong>Aucun avis reçu pour le moment.</strong>`;
+
+    if (!reviews.length) {
+      reviewList.innerHTML = `<div style="padding:10px;color:#666;">Les avis reçus apparaîtront ici.</div>`;
+      return;
+    }
+
+    reviewList.innerHTML = reviews.map(r => {
+      const stars = "★".repeat(Math.max(0, Math.min(5, Number(r.rating || 0)))) + "☆".repeat(Math.max(0, 5 - Math.min(5, Number(r.rating || 0))));
+      const date = r.createdAt ? new Date(r.createdAt).toLocaleString("fr-FR") : "";
+      return `
+        <div style="border:1px solid #eadfe2;background:#fff;padding:10px 12px;margin-bottom:8px;text-align:left;">
+          <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+            <strong>${escapeHTML(r.name || "Anonyme")}</strong>
+            <span style="color:#b36b00;font-weight:800;letter-spacing:1px;">${stars}</span>
+          </div>
+          <div style="margin-top:7px;white-space:pre-wrap;line-height:1.45;">${escapeHTML(r.comment || "")}</div>
+          ${date ? `<div style="font-size:11px;color:#888;margin-top:7px;">${escapeHTML(date)}</div>` : ""}
+        </div>`;
+    }).join("");
+  } catch (err) {
+    console.error("Erreur chargement avis", err);
+    reviewStats.textContent = "❌ Impossible de charger les avis.";
+  }
+}
+
+async function openSpectatorReviewsAdmin() {
+  if (!admin) return alert("❌ Mode admin requis");
+  if (!spectatorReviewsModal) return;
+
+  spectatorReviewsModal.classList.remove("hidden");
+  if (reviewSmsText && !reviewSmsText.value.trim()) reviewSmsText.value = getDefaultReviewSmsText();
+  reviewCurrentRecipient.innerHTML = "Chargement…";
+
+  reviewSmsContacts = collectUniqueReviewContacts();
+  reviewQueueIndex = 0;
+
+  try {
+    await loadReviewSmsSentState();
+  } catch (err) {
+    console.warn("Historique SMS avis non chargé", err);
+    reviewSmsSent = {};
+  }
+
+  renderReviewQueue();
+  await loadSpectatorReviews();
+}
+
+if (spectatorReviewsBtn) spectatorReviewsBtn.addEventListener("click", openSpectatorReviewsAdmin);
+if (reviewCloseBtn) reviewCloseBtn.addEventListener("click", () => spectatorReviewsModal?.classList.add("hidden"));
+if (reviewOpenPublicBtn) reviewOpenPublicBtn.addEventListener("click", () => window.open("avis.html", "_blank"));
+if (reviewOpenSmsBtn) reviewOpenSmsBtn.addEventListener("click", openCurrentReviewSms);
+if (reviewMarkSentBtn) reviewMarkSentBtn.addEventListener("click", async () => {
+  reviewMarkSentBtn.disabled = true;
+  try {
+    await markCurrentReviewSmsSent();
+  } catch (err) {
+    console.error(err);
+    alert("❌ Impossible d'enregistrer l'envoi. Réessaie.");
+  } finally {
+    reviewMarkSentBtn.disabled = !getCurrentReviewContact();
+  }
+});
+if (reviewSkipBtn) reviewSkipBtn.addEventListener("click", () => {
+  const pending = getPendingReviewContacts();
+  if (pending.length <= 1) return;
+  reviewQueueIndex = (reviewQueueIndex + 1) % pending.length;
+  renderReviewQueue();
+});
+if (reviewRefreshBtn) reviewRefreshBtn.addEventListener("click", loadSpectatorReviews);
+
 // ===================================================
 // 📢 MAILING NOUVELLE PIÈCE
 // ===================================================
@@ -7070,6 +7312,49 @@ Il vous suffit de compléter le formulaire ci-dessous pour que les QR codes soie
 ">
   ✉️ Mode email : TEST
 </div>
+<!-- ⭐ Avis spectateurs : SMS + livre d'or -->
+<div id="spectatorReviewsModal" class="modal hidden">
+  <div class="modal-content" style="max-width:820px;width:94%;max-height:92vh;overflow:auto;text-align:left;">
+    <h3 style="margin-top:0;text-align:center;">⭐ Avis spectateurs</h3>
+
+    <div style="background:#fff6f8;border:1px solid #ead4db;padding:12px;margin-bottom:12px;">
+      <strong>📱 Demander un avis par SMS</strong>
+      <p style="font-size:13px;color:#666;line-height:1.45;margin:7px 0 9px;">
+        La liste est créée à partir des réservations et dédupliquée par numéro de téléphone : un même numéro ne reçoit qu'un seul SMS.
+      </p>
+      <div id="reviewQueueInfo" style="font-weight:700;margin-bottom:10px;">Chargement…</div>
+
+      <label for="reviewSmsText" style="font-weight:700;display:block;margin-bottom:5px;">Message SMS</label>
+      <textarea id="reviewSmsText" style="width:100%;min-height:135px;padding:10px;border:1px solid #ccc;box-sizing:border-box;font-family:Arial,sans-serif;font-size:14px;line-height:1.4;"></textarea>
+
+      <div id="reviewCurrentRecipient" style="margin:12px 0;padding:12px;background:white;border:1px solid #e5d9dd;">Chargement…</div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button id="reviewOpenSmsBtn" type="button" style="background:#2e7d32;">📱 Ouvrir le SMS</button>
+        <button id="reviewMarkSentBtn" type="button" style="background:#ad5d72;">✅ Envoyé → suivant</button>
+        <button id="reviewSkipBtn" type="button" style="background:#757575;">⏭️ Passer</button>
+        <button id="reviewOpenPublicBtn" type="button" style="background:#3949ab;">🌐 Voir le formulaire</button>
+      </div>
+      <p style="font-size:12px;color:#777;line-height:1.4;margin:9px 0 0;">
+        Fonctionnement : ouvre le SMS, envoie-le depuis ton téléphone, reviens ici puis appuie sur « Envoyé → suivant ». L'avancement est mémorisé.
+      </p>
+    </div>
+
+    <div style="background:#fafafa;border:1px solid #ddd;padding:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:9px;">
+        <strong>💬 Avis reçus</strong>
+        <button id="reviewRefreshBtn" type="button" style="background:#546e7a;padding:7px 10px;">🔄 Actualiser</button>
+      </div>
+      <div id="reviewStats" style="margin-bottom:9px;color:#555;">Chargement…</div>
+      <div id="reviewList" style="max-height:320px;overflow:auto;"></div>
+    </div>
+
+    <div style="display:flex;justify-content:flex-end;margin-top:12px;">
+      <button id="reviewCloseBtn" type="button" style="background:#757575;">Fermer</button>
+    </div>
+  </div>
+</div>
+
 <!-- 📢 Modale mailing nouvelle pièce -->
 <div id="newPieceMailingModal" class="modal hidden">
   <div class="modal-content" style="max-width:900px;width:94%;max-height:90vh;overflow:auto;">
